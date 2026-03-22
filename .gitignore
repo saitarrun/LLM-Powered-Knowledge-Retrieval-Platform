@@ -1,0 +1,25 @@
+# Data
+data/
+backend/rag.db
+backend/semantic_cache/
+backend/semantic_cache_meta.pkl
+backend/uploads/
+*.db
+*.pkl
+*.log
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+
+# Environment
+.env
+.DS_Store
+.next/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/

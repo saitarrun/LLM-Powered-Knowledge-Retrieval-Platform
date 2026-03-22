@@ -1,4 +1,4 @@
-# Nexus ⚡ RAG Swarm Platform
+# Nexus ~ LLM-Powered-Knowledge-Retrieval-Platform
 
 [![Deployment - Vercel](https://img.shields.io/badge/Deployment-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com)
 [![Architecture - Swarm](https://img.shields.io/badge/Architecture-Swarm-gold?style=for-the-badge&logo=swarm)](https://github.com/saitarrun/rag-platform)

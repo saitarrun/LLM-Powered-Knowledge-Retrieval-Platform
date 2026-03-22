@@ -5,25 +5,28 @@
 
 **Nexus** is an enterprise-grade, locally-sovereign Knowledge Retrieval Platform featuring a **Multi-Agent Swarm** architecture, **Knowledge Graph (Neo4j)** extraction, and **Local n8n Automation**. Designed for high-precision information extraction and curation.
 
-## 🌟 Key Features
+## 🖼️ System Preview
 
-### 🧠 Swarm Orchestration
-A dynamic multi-agent system that routes queries through specialized neural nodes:
-- **Orchestration Agent**: Logic-driven routing and intent resolution.
-- **Evidence Agent**: Neural reranking to ensure top-tier context precision.
-- **Synthesis Agent**: Generating grounded, cited answers with zero hallucinations.
-- **Feedback Agent**: Human-in-the-loop correction and reinforcement.
+### 📊 Tactical Dashboard
+The central nervous system of the platform, providing real-time analytics on asset health, vector density, and system latency.
+![Dashboard](./docs/screenshots/dashboard.png)
+
+### 💬 Neural Chat Interface
+Conversational intelligence with multi-agent orchestration. Features real-time streaming, grounded citations, and human-in-the-loop feedback.
+![Chat](./docs/screenshots/chat.png)
 
 ### 🕸️ Neural Topology (GraphRAG)
-Automatic entity-relationship extraction stored in **Neo4j**. Visualize the system's "memory" with the **Lattice Mapping** interface, featuring color-graded importance and level-of-detail rendering.
+Visualize the relationship between your data entities through the **Lattice Mapping**. High-importance hubs glow in gold, while minor synapses are rendered with high contrast.
+![Topology](./docs/screenshots/topology.png)
 
-### 🔍 Hybrid Retrieval
-Fusing **BM25 Sparse** and **FAISS Dense** vector results using **Reciprocal Rank Fusion (RRF)** for the ultimate retrieval accuracy.
+### 📂 Knowledge Archive
+Comprehensive document management with synchronization status and metadata extraction.
+![Archive](./docs/screenshots/archive.png)
 
-### 🎨 Premium Semantic UI
-- **Lattice Design System**: A high-contrast, professional dark theme (`#050505`).
-- **Real-time Observability**: Trace agent execution and performance in real-time.
-- **Interactive Citations**: Perfectly relevant document references with instant document peek modals.
+### 🔐 Multi-Step Approval (Slack & n8n)
+Enterprise security via automated Slack approval workflows. No document enters the index without explicit authorization.
+![Slack Approval](./docs/screenshots/slack_approval.png)
+![n8n Workflow](./docs/screenshots/n8n.png)
 
 ## 🛠️ Tech Stack
 
@@ -36,15 +39,15 @@ Fusing **BM25 Sparse** and **FAISS Dense** vector results using **Reciprocal Ran
 ## 🚀 Deployment Strategy
 
 ### Local (Docker)
-The system is fully containerized and easy to run anywhere:
+Ensure your `.env` is configured, then run:
 ```bash
 docker-compose up --build -d
 ```
 
 ### Production (Vercel + Managed Backend)
 1.  **Frontend**: Deploy the `frontend/` directory to Vercel.
-2.  **Backend**: Host the `backend/` and `neo4j/` on a VPS (e.g., Railway, Render, AWS) to maintain persistent state.
-3.  **Sync**: Connect the frontend to the backend via `NEXT_PUBLIC_API_URL`.
+2.  **Backend**: Host the `backend/` and `neo4j/` on a VPS (e.g., Railway).
+3.  **Sync**: Connect via `NEXT_PUBLIC_API_URL`.
 
 ---
 *Curated with ❤️ for the future of Agentic Intelligence.*

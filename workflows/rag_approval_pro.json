@@ -1,0 +1,84 @@
+{
+  "name": "RAG PRO (No Slack Needed)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ingest",
+        "options": {}
+      },
+      "id": "765d7705-7f41-477c-bc7b-6062f7400030",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "webhookId": "approve-now",
+        "options": {}
+      },
+      "id": "wait-for-me",
+      "name": "WAIT FOR MANUAL APPROVAL",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/api/documents/upload",
+        "sendBinaryData": true,
+        "binaryPropertyName": "data",
+        "options": {
+          "bodyContentCustomization": {
+             "values": {
+                "bodyParameterCustomFieldName": "file"
+             }
+          }
+        }
+      },
+      "id": "e4f2027c-8ba3-4bf3-8ec1-a63b3e82ab92",
+      "name": "HTTP Request (RAG)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        800,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "WAIT FOR MANUAL APPROVAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WAIT FOR MANUAL APPROVAL": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request (RAG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}

@@ -1,0 +1,66 @@
+{
+  "name": "RAG Smart Ingest",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ingest",
+        "options": {}
+      },
+      "id": "765d7705-7f41-477c-bc7b-6062f7400030",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/api/documents/upload",
+        "sendBody": true,
+        "specifyBody": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "file",
+              "action": "attachBinary",
+              "binaryPropertyName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e4f2027c-8ba3-4bf3-8ec1-a63b3e82ab92",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        600,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "f81d4fae-7dec-11d0-a765-00a0c91e6bf6",
+  "id": "1",
+  "meta": {
+    "instanceId": "0d2d78c2e0e184113a22a8348977dfb0e"
+  }
+}

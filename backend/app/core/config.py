@@ -2,21 +2,19 @@ import os
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "Nexus RAG Platform"
+    PROJECT_NAME: str = "Knowledge Retrieval Platform"
     API_V1_STR: str = "/api"
+    
+    # Environment
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "info").upper()
     
-    # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./backend/rag.db")
-    FAISS_INDEX_PATH: str = os.getenv("FAISS_INDEX_PATH", "./backend/data/faiss_index")
+    # Database (SQLite)
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./rag.db")
     
-    # Neo4j
-    NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-    NEO4J_USER: str = os.getenv("NEO4J_USER", "neo4j")
-    NEO4J_PASSWORD: str = os.getenv("NEO4J_PASSWORD", "password")
-    
-    # Redis for Semantic Cache
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    # Vector Store
+    FAISS_INDEX_PATH: str = os.getenv("FAISS_INDEX_PATH", "./faiss_index")
+    SEMANTIC_CACHE_PATH: str = os.getenv("SEMANTIC_CACHE_PATH", "./semantic_cache")
     SEMANTIC_CACHE_THRESHOLD: float = float(os.getenv("SEMANTIC_CACHE_THRESHOLD", "0.96"))
     
     # Storage

@@ -1,40 +1,50 @@
-# Nexus RAG Swarm Platform 🚀
+# Nexus ⚡ RAG Swarm Platform
 
-An enterprise-grade, locally-sovereign Knowledge Retrieval Platform featuring a **Multi-Agent Swarm** architecture, **Knowledge Graph (Neo4j)** extraction, and **Local n8n Automation**.
+[![Deployment - Vercel](https://img.shields.io/badge/Deployment-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com)
+[![Architecture - Swarm](https://img.shields.io/badge/Architecture-Swarm-gold?style=for-the-badge&logo=swarm)](https://github.com/saitarrun/rag-platform)
 
-## 🌟 Advanced Features
-- **Swarm Orchestration**: Dynamic routing between Vector, Graph, SQL, and Web agents.
-- **Hybrid Search**: Fusing BM25 Sparse and FAISS Dense vector results (RRF).
-- **GraphRAG**: Automatic entity-relationship extraction stored in **Neo4j**.
-- **Real-Time Streaming**: Token-level typewriter animation and agent observability tracing (SSE).
-- **Local n8n Engine**: 100% local workflow automation for file sync and analytics.
-- **Premium UI**: Interactive citations with document peek modals and Markdown rendering.
+**Nexus** is an enterprise-grade, locally-sovereign Knowledge Retrieval Platform featuring a **Multi-Agent Swarm** architecture, **Knowledge Graph (Neo4j)** extraction, and **Local n8n Automation**. Designed for high-precision information extraction and curation.
 
-## 🛠️ Setup & Quickstart
+## 🌟 Key Features
 
-1. **Start the Platform**:
-   ```bash
-   docker-compose up --build -d
-   ```
-2. **Access the Services**:
-   - **Main UI**: [http://localhost:3001](http://localhost:3001)
-   - **n8n Automation**: [http://localhost:5678](http://localhost:5678)
-   - **Backend API**: [http://localhost:8001/api](http://localhost:8001/api)
-   - **Graph UI (Neo4j)**: [http://localhost:7474](http://localhost:7474) (Login: neo4j/password)
-
-## 📁 IDE Configuration
-This workspace is optimized for **VS Code**:
-- Extension recommendations and Python pathing are configured in `.vscode/settings.json`.
-- A global `.gitignore` is provided to keep your environment clean.
-
-## 🤖 Internal Swarm Agents
-- **Query Understanding Agent**: Analyzing intent and resolving conversational memory.
-- **Retriever Agent**: Multi-vector search with Reciprocal Rank Fusion.
+### 🧠 Swarm Orchestration
+A dynamic multi-agent system that routes queries through specialized neural nodes:
+- **Orchestration Agent**: Logic-driven routing and intent resolution.
 - **Evidence Agent**: Neural reranking to ensure top-tier context precision.
-- **Synthesis Agent**: Generating grounded, cited answers.
-- **Critic Agent**: Real-time hallucination detection.
-- **Web Search Agent**: Real-time DuckDuckGo lookup for current events.
-- **SQL Analyst Agent**: Querying local metadata for admin insights.
+- **Synthesis Agent**: Generating grounded, cited answers with zero hallucinations.
+- **Feedback Agent**: Human-in-the-loop correction and reinforcement.
+
+### 🕸️ Neural Topology (GraphRAG)
+Automatic entity-relationship extraction stored in **Neo4j**. Visualize the system's "memory" with the **Lattice Mapping** interface, featuring color-graded importance and level-of-detail rendering.
+
+### 🔍 Hybrid Retrieval
+Fusing **BM25 Sparse** and **FAISS Dense** vector results using **Reciprocal Rank Fusion (RRF)** for the ultimate retrieval accuracy.
+
+### 🎨 Premium Semantic UI
+- **Lattice Design System**: A high-contrast, professional dark theme (`#050505`).
+- **Real-time Observability**: Trace agent execution and performance in real-time.
+- **Interactive Citations**: Perfectly relevant document references with instant document peek modals.
+
+## 🛠️ Tech Stack
+
+- **Frontend**: Next.js 15+, Tailwind CSS 4, Framer Motion, D3-Force.
+- **Backend**: FastAPI (Python 3.11), SQLAlchemy, FAISS, PyMuPDF.
+- **Graph**: Neo4j 5.x.
+- **Automation**: n8n (Locally containerized).
+- **Cache**: Redis / GPTCache (Semantic Layer).
+
+## 🚀 Deployment Strategy
+
+### Local (Docker)
+The system is fully containerized and easy to run anywhere:
+```bash
+docker-compose up --build -d
+```
+
+### Production (Vercel + Managed Backend)
+1.  **Frontend**: Deploy the `frontend/` directory to Vercel.
+2.  **Backend**: Host the `backend/` and `neo4j/` on a VPS (e.g., Railway, Render, AWS) to maintain persistent state.
+3.  **Sync**: Connect the frontend to the backend via `NEXT_PUBLIC_API_URL`.
 
 ---
-*Created with ❤️ for Advanced Agentic Coding.*
+*Curated with ❤️ for the future of Agentic Intelligence.*

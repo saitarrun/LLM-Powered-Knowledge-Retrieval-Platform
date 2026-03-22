@@ -1,0 +1,173 @@
+{
+  "name": "RAG Smart Ingest (ENTERPRISE)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ingest"
+      },
+      "id": "trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "claude-3-5-sonnet-20240620",
+        "prompt": "=Analyze this document content:\n{{ $binary.data.base64 }}\n\nProvide two things in JSON format:\n1. A 2-sentence summary of the document.\n2. A boolean 'sensitive' if it contains PII (emails, phone numbers, SSNs).\n\nReturn ONLY the JSON.",
+        "options": {
+          "maxTokens": 200
+        }
+      },
+      "id": "ai-summarize",
+      "name": "AI Summarizer",
+      "type": "n8n-nodes-base.anthropic",
+      "typeVersion": 1,
+      "position": [
+        400,
+        300
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "your-anthropic-credential-id",
+          "name": "Anthropic Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": "C049JF5TSLD",
+        "text": "=🛡️ *Enterprise Security Review Required*\n*File:* {{ $('Webhook').binary.data.fileName }}\n*Risk Status:* {{ $json.sensitive ? '⚠️ SENSITIVE' : '✅ SAFE' }}\n\n📖 *Summary:* {{ $json.summary }}\n\n🛡️ *Review & Action:* \n{{ $execution.resumeUrl.replace('http://localhost:5678', 'http://localhost:3001/approve') }}?summary={{ encodeURIComponent($json.summary) }}&risk={{ $json.sensitive }}",
+        "otherOptions": {}
+      },
+      "id": "slack-notify",
+      "name": "Slack (Notify)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "webhookId": "approval-gate"
+      },
+      "id": "wait-node",
+      "name": "Wait For Approval",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition"
+      },
+      "id": "merge-node",
+      "name": "Merge Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        1050,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/api/documents/upload",
+        "sendBinaryData": true,
+        "binaryPropertyName": "data",
+        "options": {
+          "bodyContentCustomization": {
+             "values": {
+                "bodyParameterCustomFieldName": "file"
+             }
+          }
+        }
+      },
+      "id": "upload",
+      "name": "HTTP Request (Upload)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1250,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Summarizer",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Summarizer": {
+      "main": [
+        [
+          {
+            "node": "Slack (Notify)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack (Notify)": {
+      "main": [
+        [
+          {
+            "node": "Wait For Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait For Approval": {
+      "main": [
+        [
+          {
+            "node": "Merge Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Data": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request (Upload)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}

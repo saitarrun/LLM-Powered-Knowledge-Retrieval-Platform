@@ -162,6 +162,138 @@ For comprehensive API documentation, visit `/api/docs` after starting the backen
 2.  **Backend**: Host the `backend/` and `neo4j/` on a VPS (e.g., Railway).
 3.  **Sync**: Connect via `NEXT_PUBLIC_API_URL`.
 
+## ⚙️ Configuration
+
+### Environment Variables
+The platform requires several environment variables configured in `.env`:
+
+**Backend Services**
+- `OPENAI_API_KEY`: Your OpenAI API key for embeddings and LLM calls
+- `BACKEND_PORT`: Port for FastAPI server (default: 8001)
+- `LOG_LEVEL`: Logging level (debug, info, warning, error)
+
+**Neo4j Graph Database**
+- `NEO4J_PASSWORD`: Password for Neo4j admin user
+- `NEO4J_PORT`: Neo4j Bolt port (default: 7687)
+
+**Redis Cache**
+- `REDIS_URL`: Redis connection URL (default: redis://redis:6379)
+- `CACHE_TTL`: Cache time-to-live in seconds (default: 3600)
+
+**Frontend Configuration**
+- `NEXT_PUBLIC_API_URL`: Backend API endpoint
+- `NEXT_PUBLIC_APP_NAME`: Application display name
+
+**Slack Integration**
+- `SLACK_BOT_TOKEN`: Slack app authentication token
+- `SLACK_SIGNING_SECRET`: Slack request verification secret
+
+**n8n Automation**
+- `N8N_API_URL`: n8n API endpoint
+- `N8N_API_KEY`: n8n API authentication key
+
+See `.env.example` for a complete template with all available options.
+
+## 🧪 Usage Examples
+
+### Uploading Documents
+```python
+import requests
+
+# Upload a document
+with open("document.pdf", "rb") as f:
+    files = {"file": f}
+    metadata = {
+        "source": "internal_docs",
+        "category": "technical",
+        "tags": ["api", "reference"]
+    }
+    response = requests.post(
+        "http://localhost:8001/api/documents/upload",
+        files=files,
+        data={"metadata": str(metadata)}
+    )
+    print(response.json())
+```
+
+### Querying with Context
+```python
+import requests
+
+# Ask a question with graph context
+query = {
+    "messages": [
+        {"role": "user", "content": "What entities are related to our infrastructure?"}
+    ],
+    "model": "gpt-4",
+    "stream": False,
+    "context_limit": 10
+}
+
+response = requests.post(
+    "http://localhost:8001/api/chat/completions",
+    json=query
+)
+result = response.json()
+print(result["choices"][0]["message"]["content"])
+print(f"Citations: {result.get('citations', [])}")
+```
+
+### Exploring the Knowledge Graph
+```bash
+# Access Neo4j Browser
+open http://localhost:7474
+
+# Example Cypher query to find top entities
+MATCH (e:Entity)
+RETURN e.name, count(*) as relationships
+ORDER BY relationships DESC
+LIMIT 10
+```
+
+## 🐛 Troubleshooting
+
+### Services Won't Start
+**Issue**: Docker containers fail to start or exit immediately
+- Check Docker is running: `docker ps`
+- View logs: `docker-compose logs backend`
+- Ensure ports 3001, 8001, 6379, 7474, 5678 are available
+- Rebuild images: `docker-compose down && docker-compose up --build -d`
+
+### Out of Memory Errors
+**Issue**: "docker: Error response from daemon: OOMKilled"
+- Increase Docker memory allocation (Docker Desktop → Preferences → Resources)
+- Reduce batch size in `.env`: `BATCH_SIZE=32` (default: 64)
+- Close other applications consuming memory
+
+### Neo4j Connection Failures
+**Issue**: Backend can't connect to Neo4j
+- Verify Neo4j is running: `docker-compose ps neo4j`
+- Check password matches in `.env`
+- Wait 10-15 seconds for Neo4j to fully start after container creation
+- Reset database: `docker-compose down -v && docker-compose up -d`
+
+### Embedding Service Errors
+**Issue**: "Invalid OpenAI API key" or embedding failures
+- Verify your OpenAI API key in `.env`
+- Check API key has embeddings permissions at openai.com/account/api-keys
+- Ensure you have API credits available
+- Try a smaller document first to test connectivity
+
+### UI Not Loading
+**Issue**: Frontend at localhost:3001 shows blank page
+- Verify `NEXT_PUBLIC_API_URL` points to correct backend
+- Check browser console for errors (F12 → Console)
+- Clear browser cache and reload
+- Rebuild frontend: `docker-compose down && docker-compose up --build frontend -d`
+
+## 📚 Additional Resources
+
+- **Full Documentation**: See `/docs` folder for detailed guides on architecture, workflows, and deployment
+- **API Reference**: Interactive API docs at `http://localhost:8001/api/docs` (Swagger UI)
+- **Video Tutorials**: [Coming soon] Complete walkthrough videos
+- **Community Examples**: Check `/examples` folder for sample implementations
+
 ## 🤝 Contributing
 
 We welcome contributions! Here's how to help:

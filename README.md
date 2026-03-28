@@ -39,10 +39,34 @@ Enterprise security via automated Slack approval workflows. No document enters t
 ## 🚀 Deployment Strategy
 
 ### Local (Docker)
-Ensure your `.env` is configured, then run:
-```bash
-docker-compose up --build -d
-```
+1. **Configure Environment**: Copy `.env.example` to `.env` and update with your API keys:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your OpenAI API key and other configuration
+   ```
+
+2. **Build and Start Services**: Launch all containers (backend, frontend, Redis, Neo4j, n8n):
+   ```bash
+   docker-compose up --build -d
+   ```
+
+3. **Access the Platform**:
+   - Frontend: http://localhost:3001
+   - Backend API: http://localhost:8001/api
+   - Neo4j Browser: http://localhost:7474
+   - n8n Workflows: http://localhost:5678
+   - Redis: localhost:6380
+
+4. **View Logs**:
+   ```bash
+   docker-compose logs -f backend  # Backend API logs
+   docker-compose logs -f frontend # Frontend logs
+   ```
+
+5. **Stop Services**:
+   ```bash
+   docker-compose down
+   ```
 
 ### Production (Vercel + Managed Backend)
 1.  **Frontend**: Deploy the `frontend/` directory to Vercel.

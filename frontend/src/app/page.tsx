@@ -1,18 +1,19 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { 
-  Cpu, 
-  Zap, 
-  Database, 
-  Network, 
-  ArrowRight, 
-  Terminal, 
-  ShieldCheck, 
+import {
+  Cpu,
+  Zap,
+  Database,
+  Network,
+  ArrowRight,
+  Terminal,
+  ShieldCheck,
   Activity,
   ChevronRight,
   Globe,
-  Fingerprint
+  Fingerprint,
+  Search
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";

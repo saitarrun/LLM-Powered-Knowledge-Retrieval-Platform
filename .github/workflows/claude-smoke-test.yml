@@ -10,9 +10,6 @@ permissions:
   issues: write
   pull-requests: read
 
-env:
-  # Using GitHub Actions default Node.js version for compatibility
-
 jobs:
   smoke-test:
     name: Post-Deploy Smoke Test

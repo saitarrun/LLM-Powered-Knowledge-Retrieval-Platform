@@ -1,27 +1,20 @@
-name: Post-Deploy Smoke Tests
+name: Claude Post-Deploy Smoke Tests
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      auto_revert:
-        description: "Auto-revert if backend is completely down?"
-        required: false
-        default: "false"
-        type: choice
-        options: ["true", "false"]
 
 permissions:
-  contents: write       # push revert commit if needed
-  issues: write         # open critical failure issues
+  contents: write
+  issues: write
   pull-requests: read
 
 jobs:
   smoke-test:
-    name: Run Application & Smoke Test
+    name: Post-Deploy Smoke Test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -35,67 +28,79 @@ jobs:
       - name: Install test dependencies
         run: pip install httpx
 
-      # ── Prepare environment ──────────────────────────────────────────────────
-      - name: Create .env for CI
+      - name: Create .env from .env.example and set CI values
         run: |
-          cat > .env << 'EOF'
-          ENVIRONMENT=development
-          LOG_LEVEL=info
-          DATABASE_URL=sqlite:///./data/rag.db
-          FAISS_INDEX_PATH=./data/faiss_index
-          EMBEDDING_MODEL=all-MiniLM-L6-v2
-          OPENAI_API_KEY=sk-test-placeholder-smoke-test
-          REDIS_URL=redis://redis:6379/0
-          NEO4J_URI=bolt://neo4j:7687
-          NEO4J_USER=neo4j
-          NEO4J_PASSWORD=password
-          NEXT_PUBLIC_API_URL=http://localhost:8001/api
-          BACKEND_URL=http://backend:8000
-          EOF
+          cp .env.example .env
+          # Override for CI environment
+          {
+            echo "ENVIRONMENT=ci"
+            echo "LOG_LEVEL=info"
+            echo "OPENAI_API_KEY=sk-test-smoke-test-placeholder"
+            echo "NEO4J_PASSWORD=testpass"
+          } >> .env
           mkdir -p data
+          echo "✅ .env created for CI"
+          head -5 .env
 
-      # ── Start the full stack ─────────────────────────────────────────────────
+      - name: Verify docker-compose syntax
+        run: |
+          docker compose config > /dev/null
+          echo "✅ docker-compose.yml is valid"
+
       - name: Build and start all services
         run: |
+          echo "🚀 Starting Docker Compose stack..."
           docker compose up -d --build
-          echo "Services started. Waiting for containers..."
-
-      - name: Show container status
-        run: docker compose ps
-
-      # ── Wait (handled by smoke_test.py itself, but give containers a head start)
-      - name: Give services 30s to initialise
-        run: sleep 30
-
-      - name: Show logs if any container exited early
-        if: always()
-        run: |
+          sleep 5
           docker compose ps
-          docker compose logs backend  --tail=30 || true
-          docker compose logs frontend --tail=20 || true
-          docker compose logs neo4j    --tail=20 || true
 
-      # ── Run Claude-powered smoke tests ──────────────────────────────────────
-      - name: Run smoke tests + Claude analysis
+      - name: Wait for backend health check
+        timeout-minutes: 3
+        run: |
+          echo "⏳ Waiting for backend..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:8001/api/health > /dev/null 2>&1; then
+              echo "✅ Backend is healthy"
+              exit 0
+            fi
+            echo "  [$i/30] Waiting... ($(($i * 2))s elapsed)"
+            sleep 2
+          done
+          echo "❌ Backend did not become healthy"
+          docker compose logs backend --tail=50
+          exit 1
+
+      - name: Wait for frontend
+        timeout-minutes: 2
+        run: |
+          echo "⏳ Waiting for frontend..."
+          for i in {1..20}; do
+            if curl -sf http://localhost:3001 > /dev/null 2>&1; then
+              echo "✅ Frontend is healthy"
+              exit 0
+            fi
+            echo "  [$i/20] Waiting..."
+            sleep 2
+          done
+          echo "⚠️  Frontend not ready yet, but continuing with backend tests"
+
+      - name: Run Claude-powered smoke tests
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_SHA: ${{ github.sha }}
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          AUTO_REVERT: ${{ github.event.inputs.auto_revert || 'false' }}
+          GITHUB_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY:  ${{ github.repository }}
+          GITHUB_SHA:         ${{ github.sha }}
+          COMMIT_MESSAGE:     ${{ github.event.head_commit.message || 'CI deployment test' }}
+          RUN_URL:            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: python .github/scripts/smoke_test.py
 
-      # ── Always capture logs for debugging ───────────────────────────────────
-      - name: Capture full docker logs on failure
-        if: failure()
-        run: |
-          echo "=== BACKEND ===" && docker compose logs backend  || true
-          echo "=== FRONTEND ===" && docker compose logs frontend || true
-          echo "=== NEO4J ===" && docker compose logs neo4j     || true
-          echo "=== CELERY ===" && docker compose logs celery-worker || true
-
-      - name: Stop all services
+      - name: Show Docker Compose status
         if: always()
-        run: docker compose down -v
+        run: |
+          echo "=== SERVICE STATUS ===" && docker compose ps
+          echo "" && echo "=== RECENT LOGS ===" 
+          docker compose logs --tail=30 2>&1 | head -100
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v 2>/dev/null || true

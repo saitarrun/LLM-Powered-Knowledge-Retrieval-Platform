@@ -308,15 +308,8 @@ if __name__ == "__main__":
         for r in results
     )
 
-    failure_details = "
-
-".join(
-        f"### ❌ {r['name']}
-**Detail:** {r['detail']}
-**Response:**
-```
-{r['response'][:500]}
-```"
+    failure_details = "\n\n".join(
+        f"### ❌ {r['name']}\n**Detail:** {r['detail']}\n**Response:**\n```\n{r['response'][:500]}\n```"
         for r in results if r["status"] == "FAIL"
     )
 
@@ -342,21 +335,14 @@ if __name__ == "__main__":
 {docker_logs[:3000] if docker_logs else 'No logs captured'}
 ```"""
 
-    print("
-🤖 Asking Claude to analyze results...")
+    print("🤖 Asking Claude to analyze results...")
     analysis = ask_claude(ANALYSIS_SYSTEM.replace("{sha}", COMMIT_SHA[:10]), user_msg)
 
     header = (
-        f"## 🤖 Claude Post-Deploy Health Report
-
-"
+        f"## 🤖 Claude Post-Deploy Health Report\n\n"
         f"> **Commit:** `{COMMIT_SHA[:10]}` · "
         f"**Tests:** {passed}/{len(results)} passed · "
-        f"[Workflow run]({RUN_URL})
-
----
-
-"
+        f"[Workflow run]({RUN_URL})\n\n---\n\n"
     )
     full_report = header + analysis
 
@@ -373,22 +359,10 @@ if __name__ == "__main__":
         issue_title = f"🚨 Post-deploy failure on {COMMIT_SHA[:8]}: {', '.join(r['name'] for r in critical_failures)}"
         issue_body  = (
             f"**Automatic issue opened by Claude** after detecting critical failures "
-            f"following merge of `{COMMIT_SHA[:10]}`.
-
-"
-            f"**Commit message:** {COMMIT_MESSAGE}
-
-"
-            f"---
-
-{analysis}
-
-"
-            f"**To revert:**
-```bash
-git revert {COMMIT_SHA}
-git push
-```"
+            f"following merge of `{COMMIT_SHA[:10]}`.\n\n"
+            f"**Commit message:** {COMMIT_MESSAGE}\n\n"
+            f"---\n\n{analysis}\n\n"
+            f"**To revert:**\n```bash\ngit revert {COMMIT_SHA}\ngit push\n```"
         )
         try:
             create_issue(issue_title, issue_body, ["bug", "critical"])

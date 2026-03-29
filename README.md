@@ -318,6 +318,14 @@ This project is licensed under the MIT License. See [LICENSE](./LICENSE) file fo
 ## 🙋 Support
 
 - **Issues**: Report bugs or request features via GitHub Issues
+
+- ## 📚 Acknowledgments
+
+- This project builds upon modern enterprise patterns for knowledge management and AI orchestration. Special thanks to the open-source communities behind Neo4j, LangChain, FastAPI, and Vercel for providing the foundational technologies that power Nexus.
+
+- ---
+
+**Built with ❤️ for semantic reasoning and knowledge curation**
 - **Discussions**: Join community discussions in the Discussions tab
 - **Documentation**: Check `/docs` folder for detailed guides
 

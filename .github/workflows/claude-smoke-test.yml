@@ -1,0 +1,101 @@
+name: Claude Post-Deploy Smoke Tests
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      auto_revert:
+        description: "Auto-revert if backend is completely down?"
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+
+permissions:
+  contents: write       # push revert commit if needed
+  issues: write         # open critical failure issues
+  pull-requests: read
+
+jobs:
+  smoke-test:
+    name: Run Application & Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install httpx
+
+      # ── Prepare environment ──────────────────────────────────────────────────
+      - name: Create .env for CI
+        run: |
+          cat > .env << 'EOF'
+          ENVIRONMENT=development
+          LOG_LEVEL=info
+          DATABASE_URL=sqlite:///./data/rag.db
+          FAISS_INDEX_PATH=./data/faiss_index
+          EMBEDDING_MODEL=all-MiniLM-L6-v2
+          OPENAI_API_KEY=sk-test-placeholder-smoke-test
+          REDIS_URL=redis://redis:6379/0
+          NEO4J_URI=bolt://neo4j:7687
+          NEO4J_USER=neo4j
+          NEO4J_PASSWORD=password
+          NEXT_PUBLIC_API_URL=http://localhost:8001/api
+          BACKEND_URL=http://backend:8000
+          EOF
+          mkdir -p data
+
+      # ── Start the full stack ─────────────────────────────────────────────────
+      - name: Build and start all services
+        run: |
+          docker compose up -d --build
+          echo "Services started. Waiting for containers..."
+
+      - name: Show container status
+        run: docker compose ps
+
+      # ── Wait (handled by smoke_test.py itself, but give containers a head start)
+      - name: Give services 30s to initialise
+        run: sleep 30
+
+      - name: Show logs if any container exited early
+        if: always()
+        run: |
+          docker compose ps
+          docker compose logs backend  --tail=30 || true
+          docker compose logs frontend --tail=20 || true
+          docker compose logs neo4j    --tail=20 || true
+
+      # ── Run Claude-powered smoke tests ──────────────────────────────────────
+      - name: Run smoke tests + Claude analysis
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          AUTO_REVERT: ${{ github.event.inputs.auto_revert || 'false' }}
+        run: python .github/scripts/smoke_test.py
+
+      # ── Always capture logs for debugging ───────────────────────────────────
+      - name: Capture full docker logs on failure
+        if: failure()
+        run: |
+          echo "=== BACKEND ===" && docker compose logs backend  || true
+          echo "=== FRONTEND ===" && docker compose logs frontend || true
+          echo "=== NEO4J ===" && docker compose logs neo4j     || true
+          echo "=== CELERY ===" && docker compose logs celery-worker || true
+
+      - name: Stop all services
+        if: always()
+        run: docker compose down -v

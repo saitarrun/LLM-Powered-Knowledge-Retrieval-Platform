@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # Storage
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "./uploads")
     
+    # Redis Configuration
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    
     # Models
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
     RERANKING_MODEL: str = os.getenv("RERANKING_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")

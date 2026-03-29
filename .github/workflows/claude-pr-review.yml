@@ -3,6 +3,9 @@ name: Claude PR Review
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  # Re-run when other CI checks complete — so Claude can auto-merge once they go green
+  check_suite:
+    types: [completed]
   issue_comment:
     types: [created]
 
@@ -19,6 +22,7 @@ jobs:
 
     if: |
       github.event_name == 'pull_request' ||
+      github.event_name == 'check_suite' ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request != '' &&
        startsWith(github.event.comment.body, '/claude'))
@@ -35,21 +39,38 @@ jobs:
       - name: Install dependencies
         run: pip install httpx
 
-      - name: Resolve PR number
-        id: pr
+      # For pull_request events — use the PR number directly
+      - name: Resolve PR number (pull_request event)
+        if: github.event_name == 'pull_request'
+        run: echo "PR_NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+
+      # For issue_comment events — use the issue number (same as PR number)
+      - name: Resolve PR number (issue_comment event)
+        if: github.event_name == 'issue_comment'
+        run: echo "PR_NUMBER=${{ github.event.issue.number }}" >> $GITHUB_ENV
+
+      # For check_suite completion — find the open PR for this SHA
+      - name: Resolve PR number (check_suite event)
+        if: github.event_name == 'check_suite'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          SHA="${{ github.event.check_suite.head_sha }}"
+          PR=$(gh pr list --repo ${{ github.repository }} --state open --json number,headRefOid \
+               --jq ".[] | select(.headRefOid == \"$SHA\") | .number" | head -1)
+          if [ -n "$PR" ]; then
+            echo "PR_NUMBER=$PR" >> $GITHUB_ENV
           else
-            echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+            echo "No open PR found for SHA $SHA — skipping"
+            echo "PR_NUMBER=" >> $GITHUB_ENV
           fi
 
       - name: Run Claude review
+        if: env.PR_NUMBER != ''
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           COMMENT_BODY: ${{ github.event.comment.body }}
         run: python .github/scripts/claude_review.py

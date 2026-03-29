@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 """
-Claude PR Reviewer (via OpenRouter) — runs inside GitHub Actions.
-Fetches the PR diff, sends it to Claude through OpenRouter, and posts a detailed review.
-Also handles /claude commands in PR comments for on-demand responses.
+Claude PR Reviewer (OpenRouter) — full autonomous review, conflict detection,
+codebase integration checks, and auto-merge on clean approval.
 """
 
-import os
-import sys
-import httpx
+import os, sys, json, httpx
 
-# ── Config ─────────────────────────────────────────────────────────────────────
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 GITHUB_TOKEN       = os.environ["GITHUB_TOKEN"]
 REPO               = os.environ["GITHUB_REPOSITORY"]
@@ -17,17 +13,16 @@ PR_NUMBER          = os.environ.get("PR_NUMBER", "")
 EVENT_NAME         = os.environ.get("GITHUB_EVENT_NAME", "")
 COMMENT_BODY       = os.environ.get("COMMENT_BODY", "")
 
-# OpenRouter endpoint (OpenAI-compatible)
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL          = "anthropic/claude-sonnet-4-5"   # best Claude available on OpenRouter
+MODEL          = "anthropic/claude-sonnet-4-5"
+GH_API         = "https://api.github.com"
 
-GH_API      = "https://api.github.com"
-HEADERS_GH  = {
+HEADERS_GH = {
     "Authorization": f"Bearer {GITHUB_TOKEN}",
     "Accept": "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
 }
-HEADERS_OR  = {
+HEADERS_OR = {
     "Authorization": f"Bearer {OPENROUTER_API_KEY}",
     "Content-Type": "application/json",
     "HTTP-Referer": f"https://github.com/{REPO}",
@@ -35,123 +30,262 @@ HEADERS_OR  = {
 }
 
 # ── GitHub helpers ─────────────────────────────────────────────────────────────
-def gh_get(path):
-    r = httpx.get(f"{GH_API}{path}", headers=HEADERS_GH, timeout=30)
-    r.raise_for_status()
-    return r.json()
 
-def gh_post(path, payload):
-    r = httpx.post(f"{GH_API}{path}", headers=HEADERS_GH, json=payload, timeout=30)
-    r.raise_for_status()
-    return r.json()
-
-def gh_put(path, payload):
-    r = httpx.put(f"{GH_API}{path}", headers=HEADERS_GH, json=payload, timeout=30)
+def gh(method, path, **kwargs):
+    r = getattr(httpx, method)(f"{GH_API}{path}", headers=HEADERS_GH, timeout=30, **kwargs)
     r.raise_for_status()
     return r.json()
 
 def get_pr_diff(pr_number):
-    headers = {**HEADERS_GH, "Accept": "application/vnd.github.v3.diff"}
-    r = httpx.get(f"{GH_API}/repos/{REPO}/pulls/{pr_number}", headers=headers, timeout=30)
+    h = {**HEADERS_GH, "Accept": "application/vnd.github.v3.diff"}
+    r = httpx.get(f"{GH_API}/repos/{REPO}/pulls/{pr_number}", headers=h, timeout=30)
     r.raise_for_status()
     return r.text
 
+def get_pr_files(pr_number):
+    """Returns list of changed files with patch info."""
+    return gh("get", f"/repos/{REPO}/pulls/{pr_number}/files")
+
+def get_file_content(path, ref="main"):
+    """Fetch the current content of a file from the base branch."""
+    try:
+        import base64
+        data = gh("get", f"/repos/{REPO}/contents/{path}?ref={ref}")
+        return base64.b64decode(data["content"]).decode("utf-8", errors="replace")
+    except Exception:
+        return None
+
 def get_pr_info(pr_number):
-    return gh_get(f"/repos/{REPO}/pulls/{pr_number}")
+    return gh("get", f"/repos/{REPO}/pulls/{pr_number}")
 
-def post_pr_comment(pr_number, body):
-    gh_post(f"/repos/{REPO}/issues/{pr_number}/comments", {"body": body})
+def get_check_runs(sha):
+    return gh("get", f"/repos/{REPO}/commits/{sha}/check-runs").get("check_runs", [])
 
-def post_pr_review(pr_number, body, event="COMMENT"):
-    gh_post(f"/repos/{REPO}/pulls/{pr_number}/reviews", {"body": body, "event": event})
+def post_comment(pr_number, body):
+    gh("post", f"/repos/{REPO}/issues/{pr_number}/comments", json={"body": body})
+
+def post_review(pr_number, body, event="COMMENT", comments=None):
+    payload = {"body": body, "event": event}
+    if comments:
+        payload["comments"] = comments
+    gh("post", f"/repos/{REPO}/pulls/{pr_number}/reviews", json=payload)
+
+def request_changes_inline(pr_number, body, inline_comments):
+    """Post a REQUEST_CHANGES review with inline comments on specific lines."""
+    post_review(pr_number, body, event="REQUEST_CHANGES", comments=inline_comments)
 
 def merge_pr(pr_number, title, sha):
-    gh_put(f"/repos/{REPO}/pulls/{pr_number}/merge", {
+    gh("put", f"/repos/{REPO}/pulls/{pr_number}/merge", json={
         "commit_title": title,
         "sha": sha,
         "merge_method": "squash",
     })
 
-def get_check_runs(sha):
-    data = gh_get(f"/repos/{REPO}/commits/{sha}/check-runs")
-    return data.get("check_runs", [])
+# ── OpenRouter / Claude ────────────────────────────────────────────────────────
 
-# ── OpenRouter / Claude helper ─────────────────────────────────────────────────
-def ask_claude(system_prompt, user_message):
+def ask_claude(system_prompt, user_message, max_tokens=6000):
     payload = {
         "model": MODEL,
-        "max_tokens": 4096,
+        "max_tokens": max_tokens,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user",   "content": user_message},
         ],
     }
-    r = httpx.post(OPENROUTER_URL, headers=HEADERS_OR, json=payload, timeout=120)
+    r = httpx.post(OPENROUTER_URL, headers=HEADERS_OR, json=payload, timeout=180)
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]
 
+# ── Codebase context builder ───────────────────────────────────────────────────
+
+# Key files that give Claude context about the project's patterns and conventions
+CONTEXT_FILES = [
+    "backend/app/main.py",
+    "backend/requirements.txt",
+    "backend/app/core/config.py",
+    "frontend/package.json",
+    "frontend/src/app/layout.tsx",
+    "docker-compose.yml",
+    ".env.example",
+]
+
+def build_codebase_context(changed_files):
+    """
+    Fetch key existing files so Claude understands conventions,
+    plus the current version of any file being modified.
+    """
+    context_parts = []
+
+    # Always include key reference files
+    for path in CONTEXT_FILES:
+        content = get_file_content(path)
+        if content:
+            context_parts.append(f"### {path} (existing)
+```
+{content[:3000]}
+```")
+
+    # Include current (pre-PR) version of every modified file
+    for f in changed_files:
+        filename = f["filename"]
+        if filename not in CONTEXT_FILES and f["status"] in ("modified", "renamed"):
+            content = get_file_content(filename)
+            if content:
+                snippet = content[:4000]
+                context_parts.append(f"### {filename} (CURRENT version before this PR)
+```
+{snippet}
+```")
+
+    return "
+
+".join(context_parts)
+
 # ── Review prompt ──────────────────────────────────────────────────────────────
-REVIEW_SYSTEM = """You are an expert code reviewer for the **Nexus** project — an LLM-powered knowledge retrieval platform built with FastAPI (Python) + Next.js (TypeScript) + FAISS + Neo4j.
 
-Review pull requests across these dimensions:
+REVIEW_SYSTEM = """You are the **autonomous code guardian** for **Nexus** — an LLM-powered knowledge retrieval platform (FastAPI + Next.js + FAISS + Neo4j + Celery).
 
-1. **Correctness** — bugs, off-by-one errors, wrong logic, unhandled edge cases
-2. **Security** — injection risks, exposed secrets, auth bypasses, OWASP top 10
-3. **Performance** — N+1 DB queries, blocking async calls, unnecessary re-renders
-4. **Code Quality** — readability, naming, duplication, over-engineering
-5. **Tests** — are tests added/updated for the changed code?
-6. **Breaking Changes** — API contract changes, DB schema changes without migrations
-
-Format your response in GitHub Markdown:
-
-## Summary
-(2–3 sentences on what the PR does and overall quality)
-
-## Issues Found
-### 🔴 Critical
-(bugs, security issues, data loss risks — must fix before merge)
-
-### 🟡 Warnings
-(non-blocking but important: missing tests, performance concerns, unclear naming)
-
-### 🟢 Suggestions
-(optional improvements, style, nice-to-haves)
-
-## Verdict
-**APPROVE ✅** | **REQUEST_CHANGES ❌** | **NEEDS_DISCUSSION 💬**
-
-(one sentence explaining your verdict)
-
-Be direct and reference file paths and line numbers where possible. If the diff is clean with no issues, say so clearly."""
-
-def review_pr(pr_number):
-    pr   = get_pr_info(pr_number)
-    diff = get_pr_diff(pr_number)
-    head_sha = pr["head"]["sha"]
-
-    if len(diff) > 80_000:
-        diff = diff[:80_000] + "
-
-[... diff truncated due to size ...]"
-
-    user_msg = f"""## Pull Request #{pr_number}: {pr['title']}
-
-**Author:** {pr['user']['login']}
-**Branch:** `{pr['head']['ref']}` → `{pr['base']['ref']}`
-**Description:** {pr.get('body') or '(no description provided)'}
-**Stats:** {pr['changed_files']} files changed · +{pr['additions']} additions · -{pr['deletions']} deletions
-**Merge conflicts:** {'YES ⚠️' if pr.get('mergeable') is False else 'None detected'}
+You have two responsibilities:
+1. **Protect the codebase** — catch bugs, security holes, and integration breaks BEFORE they merge
+2. **Help contributors improve** — give exact, copy-pasteable fixes so they know exactly what to change
 
 ---
 
-## Diff
+## Your Review Process
+
+### Step 1 — Understand the PR
+Read the title, description, and diff. What is the contributor trying to do?
+
+### Step 2 — Check for Errors
+- **Runtime errors**: unhandled exceptions, wrong types, missing null checks, async/await misuse
+- **Logic errors**: wrong conditions, off-by-one, incorrect data transformations
+- **Import errors**: missing imports, circular imports, version mismatches with requirements.txt
+- **Type errors**: TypeScript type violations, Pydantic model mismatches
+
+### Step 3 — Integration Check (CRITICAL)
+Compare the PR's changes against the existing codebase context provided:
+- Does it follow the same patterns as existing code? (e.g., how routes are registered, how services are called)
+- Does it break any existing API contracts? (changed endpoint paths, response schemas, removed fields)
+- Does it conflict with existing DB models or migrations?
+- Does it introduce duplicate functionality that already exists elsewhere?
+- Are new dependencies added to requirements.txt / package.json?
+- Does it respect the existing CORS, auth middleware, and error handling patterns?
+
+### Step 4 — Security Scan
+- Hardcoded secrets or API keys
+- SQL injection, path traversal, XSS risks
+- Unprotected endpoints (missing auth dependency)
+- Insecure file handling (unrestricted upload types/sizes)
+
+### Step 5 — Code Quality
+- Naming consistency with existing code
+- Unnecessary complexity or duplication
+- Missing error handling for external calls (OpenAI, Neo4j, FAISS)
+
+### Step 6 — Tests
+- Are tests added for new functionality?
+- Do existing tests still make sense given the changes?
+
+---
+
+## Output Format (GitHub Markdown)
+
+## 🔍 PR Summary
+(What this PR does — 2-3 sentences)
+
+## ✅ What's Good
+(Acknowledge correct, well-written parts)
+
+## 🔴 Errors — Must Fix Before Merge
+For EACH error, provide:
+**File:** `path/to/file.py` line X
+**Problem:** What is wrong and why it will fail
+**Fix:**
+```python
+# exact replacement code here
+```
+
+## 🟡 Integration Issues — Should Fix
+For EACH issue, provide:
+**File:** `path/to/file.py`
+**Problem:** How this conflicts with or diverges from the existing codebase
+**Fix:**
+```python
+# exact replacement code here
+```
+
+## 🟢 Suggestions — Optional Improvements
+(Nice-to-haves, style, performance. Provide code snippets.)
+
+## 🏁 Verdict
+**APPROVE ✅** — No errors, integrates cleanly, ready to merge
+**REQUEST_CHANGES ❌** — Has errors or integration issues (listed above)
+**NEEDS_DISCUSSION 💬** — Architecture question that needs team input
+
+(One sentence justifying the verdict)
+
+---
+
+IMPORTANT: Be specific. Never say "consider improving X" without showing the exact code change.
+If a file cannot be reviewed because it's truncated, say so explicitly."""
+
+def review_pr(pr_number):
+    pr           = get_pr_info(pr_number)
+    diff         = get_pr_diff(pr_number)
+    changed_files = get_pr_files(pr_number)
+    head_sha     = pr["head"]["sha"]
+    base_ref     = pr["base"]["ref"]
+
+    print(f"📋 PR #{pr_number}: {pr['title']}")
+    print(f"   Files changed: {len(changed_files)} | +{pr['additions']} -{pr['deletions']}")
+
+    # Build codebase context (existing files for integration checking)
+    print("📂 Fetching codebase context...")
+    codebase_ctx = build_codebase_context(changed_files)
+
+    # Truncate diff if huge
+    if len(diff) > 70_000:
+        diff = diff[:70_000] + "
+
+[... diff truncated — review remaining files manually ...]"
+
+    # Conflict detection
+    mergeable    = pr.get("mergeable")
+    conflict_msg = ""
+    if mergeable is False:
+        conflict_msg = "
+
+> ⚠️ **MERGE CONFLICT DETECTED** — this PR cannot be merged until conflicts are resolved."
+
+    user_msg = f"""## Pull Request #{pr_number}: {pr['title']}
+
+**Author:** @{pr['user']['login']}
+**Branch:** `{pr['head']['ref']}` → `{base_ref}`
+**Description:**
+{pr.get('body') or '*(no description provided)*'}
+
+**Stats:** {pr['changed_files']} files · +{pr['additions']} additions · -{pr['deletions']} deletions
+**Merge status:** {'⚠️ CONFLICTS DETECTED' if mergeable is False else '✅ No conflicts'}
+
+---
+
+## Existing Codebase Context
+(Use this to check integration — these are the CURRENT files before this PR)
+
+{codebase_ctx}
+
+---
+
+## PR Diff (what the contributor changed)
 
 ```diff
 {diff}
 ```"""
 
-    review_body = ask_claude(REVIEW_SYSTEM, user_msg)
+    print("🤖 Asking Claude to review...")
+    review_body  = ask_claude(REVIEW_SYSTEM, user_msg)
 
+    # Determine event
     event = "COMMENT"
     if "APPROVE ✅" in review_body or "**APPROVE" in review_body:
         event = "APPROVE"
@@ -159,77 +293,153 @@ def review_pr(pr_number):
         event = "REQUEST_CHANGES"
 
     header = (
-        f"## 🤖 Claude Code Review
+        f"## 🤖 Claude Code Review{conflict_msg}
 
 "
-        f"> Automated review powered by [{MODEL}](https://openrouter.ai) via OpenRouter"
-        f" · [Workflow run](https://github.com/{REPO}/actions)
+        f"> **Model:** [{MODEL}](https://openrouter.ai) · "
+        f"**PR:** #{pr_number} · "
+        f"[Workflow run](https://github.com/{REPO}/actions)
 
----
+"
+        f"---
 
 "
     )
-    post_pr_review(pr_number, header + review_body, event)
-    print(f"✅ Posted review (event={event}) on PR #{pr_number}")
 
-    # Auto-merge if approved and no conflicts
-    if event == "APPROVE" and pr.get("mergeable") is not False:
-        checks   = get_check_runs(head_sha)
-        failed   = [c for c in checks if c["conclusion"] in ("failure", "timed_out")  and c["name"] != "Claude Code Review"]
-        pending  = [c for c in checks if c["status"]    in ("queued", "in_progress") and c["name"] != "Claude Code Review"]
+    post_review(pr_number, header + review_body, event)
+    print(f"✅ Posted review (event={event})")
+
+    # If there are merge conflicts, post a dedicated comment explaining how to fix
+    if mergeable is False:
+        conflict_help = (
+            "## ⚠️ Merge Conflicts Need to Be Resolved
+
+"
+            "Your branch has conflicts with `main`. Here's how to fix them:
+
+"
+            "```bash
+"
+            f"git checkout {pr['head']['ref']}
+"
+            f"git fetch origin
+"
+            f"git rebase origin/{base_ref}
+"
+            "# resolve any conflicts in your editor
+"
+            "git add .
+"
+            "git rebase --continue
+"
+            "git push --force-with-lease
+"
+            "```
+
+"
+            "Once conflicts are resolved and you push, Claude will re-review automatically."
+        )
+        post_comment(pr_number, conflict_help)
+        print("⚠️ Posted conflict resolution instructions")
+        return
+
+    # Auto-merge if approved
+    if event == "APPROVE":
+        checks  = get_check_runs(head_sha)
+        failed  = [c for c in checks if c["conclusion"] in ("failure", "timed_out")  and "claude" not in c["name"].lower()]
+        pending = [c for c in checks if c["status"]    in ("queued", "in_progress") and "claude" not in c["name"].lower()]
 
         if failed:
             lines = "
-".join(f"- `{c['name']}`: {c['conclusion']}" for c in failed)
-            post_pr_comment(pr_number, f"⚠️ **Claude approved the code** but these CI checks are failing — fix them before merging:
-{lines}")
+".join(f"- `{c['name']}`: {c['conclusion']} — [view]({c['html_url']})" for c in failed)
+            post_comment(pr_number,
+                f"## ✅ Claude Approved — But CI Is Failing
+
+"
+                f"The code review passed but these checks need to be fixed before merge:
+
+{lines}
+
+"
+                f"Fix the failures, push, and Claude will re-review and auto-merge once everything is green."
+            )
+            print("⚠️ Approved but CI failing — posted CI failure comment")
         elif pending:
-            post_pr_comment(pr_number, "⏳ **Claude approved this PR.** Waiting for other CI checks to finish before considering auto-merge.")
+            post_comment(pr_number,
+                "## ✅ Claude Approved — Waiting for CI
+
+"
+                "The code review passed. Waiting for other CI checks to finish.
+"
+                "Claude will auto-merge once all checks are green."
+            )
+            print("⏳ Approved, CI pending")
         else:
+            # All clear — merge it
             try:
                 merge_pr(pr_number, f"{pr['title']} (#{pr_number})", head_sha)
-                post_pr_comment(
-                    pr_number,
-                    f"🎉 **Auto-merged by Claude!**
+                post_comment(pr_number,
+                    f"## 🎉 Merged by Claude!
 
 "
-                    f"All checks passed and the review was clean.
+                    f"Code review passed, all CI checks green — squash-merged into `{base_ref}`.
+
 "
-                    f"Squash-merged `{pr['head']['ref']}` → `{pr['base']['ref']}`."
+                    f"Thanks for the contribution, @{pr['user']['login']}! 🙌"
                 )
-                print(f"✅ Auto-merged PR #{pr_number}")
+                print(f"🎉 Auto-merged PR #{pr_number}")
             except Exception as e:
-                post_pr_comment(pr_number, f"✅ **Claude approved this PR** but auto-merge failed (may need maintainer merge):
+                post_comment(pr_number,
+                    f"## ✅ Claude Approved
+
+"
+                    f"Review passed but auto-merge failed (repo may require maintainer approval):
 ```
 {e}
-```")
+```
+"
+                    f"A maintainer can merge manually."
+                )
 
-# ── /claude command handler ─────────────────────────────────────────────────────
-COMMAND_SYSTEM = """You are Claude, an AI assistant embedded in the GitHub PR workflow for the Nexus LLM knowledge retrieval platform.
-A developer has addressed you directly in a PR comment using `/claude`.
-Answer helpfully, concisely, and with concrete actionable advice.
-You have access to the full PR diff and metadata provided in the message.
-Format your response in GitHub Markdown."""
+# ── /claude command handler ────────────────────────────────────────────────────
+
+COMMAND_SYSTEM = """You are Claude, the AI code assistant for the Nexus LLM knowledge retrieval platform.
+A developer has asked you a question directly in a PR comment using `/claude`.
+
+You have the full PR diff and codebase context. Answer with:
+- Concrete, actionable advice
+- Exact code snippets when suggesting changes
+- Short explanation of *why* you're recommending something
+
+Be direct. Don't hedge. If something is wrong, say so clearly.
+Format in GitHub Markdown."""
 
 def handle_comment_command(pr_number, comment_body):
     question = comment_body.replace("/claude", "", 1).strip()
     if not question:
-        question = "Summarize this PR and tell me what to verify before merging."
+        question = "Review this PR thoroughly. What should I check or fix before it can be merged?"
 
-    pr   = get_pr_info(pr_number)
-    diff = get_pr_diff(pr_number)
+    pr            = get_pr_info(pr_number)
+    diff          = get_pr_diff(pr_number)
+    changed_files = get_pr_files(pr_number)
+
     if len(diff) > 40_000:
         diff = diff[:40_000] + "
 
 [... diff truncated ...]"
 
+    codebase_ctx = build_codebase_context(changed_files)
+
     user_msg = f"""## PR Context
 **Title:** {pr['title']}
-**Author:** {pr['user']['login']}
+**Author:** @{pr['user']['login']}
 **Branch:** `{pr['head']['ref']}` → `{pr['base']['ref']}`
 **Description:** {pr.get('body') or '(none)'}
 
-## Diff
+## Existing Codebase Context
+{codebase_ctx}
+
+## PR Diff
 ```diff
 {diff}
 ```
@@ -237,30 +447,29 @@ def handle_comment_command(pr_number, comment_body):
 ## Developer's Question
 {question}"""
 
-    answer = ask_claude(COMMAND_SYSTEM, user_msg)
+    answer  = ask_claude(COMMAND_SYSTEM, user_msg)
     preview = question[:120] + ("..." if len(question) > 120 else "")
-    full_response = (
+    post_comment(pr_number,
         f"## 🤖 Claude
 
-"
-        f"> Replying to: *{preview}*
+> *{preview}*
 
 ---
 
-"
-        f"{answer}
+{answer}
 
 "
         f"---
-*[{MODEL}](https://openrouter.ai) via OpenRouter*"
+*[{MODEL}](https://openrouter.ai) via OpenRouter · "
+        f"Reply with `/claude <question>` for follow-ups*"
     )
-    post_pr_comment(pr_number, full_response)
-    print(f"✅ Replied to /claude command on PR #{pr_number}")
+    print(f"✅ Replied to /claude on PR #{pr_number}")
 
 # ── Entry point ────────────────────────────────────────────────────────────────
+
 if __name__ == "__main__":
     if not PR_NUMBER:
-        print("No PR_NUMBER set — exiting")
+        print("No PR_NUMBER — exiting")
         sys.exit(0)
 
     pr_num = int(PR_NUMBER)

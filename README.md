@@ -2,6 +2,9 @@
 
 [![Deployment - Vercel](https://img.shields.io/badge/Deployment-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com)
 [![Architecture - Swarm](https://img.shields.io/badge/Architecture-Swarm-gold?style=for-the-badge&logo=swarm)](https://github.com/saitarrun/rag-platform)
+[![Contributors](https://img.shields.io/github/contributors/saitarrun/LLM-Powered-Knowledge-Retrieval-Platform?style=for-the-badge)](https://github.com/saitarrun/LLM-Powered-Knowledge-Retrieval-Platform/graphs/contributors)
+[![Open Issues](https://img.shields.io/github/issues/saitarrun/LLM-Powered-Knowledge-Retrieval-Platform?style=for-the-badge&color=orange)](https://github.com/saitarrun/LLM-Powered-Knowledge-Retrieval-Platform/issues)
+[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 **Nexus** is an enterprise-grade, locally-sovereign Knowledge Retrieval Platform featuring a **Multi-Agent Swarm** architecture, **Knowledge Graph (Neo4j)** extraction, and **Local n8n Automation**. Designed for high-precision information extraction and curation.
 
@@ -75,6 +78,25 @@ docker-compose up -d
 # Access the platform
 open http://localhost:3001
 ```
+
+## 🤝 Contributing
+
+We love contributors! Nexus is an open-source project and we welcome contributions of all types.
+
+### Quick Start for Contributors
+- **Setup Guide**: See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed setup and workflow
+- **Good First Issues**: [Start here!](https://github.com/saitarrun/LLM-Powered-Knowledge-Retrieval-Platform/issues?q=label%3A%22good+first+issue%22) — Perfect for new contributors
+- **Help Wanted**: [Issues needing attention](https://github.com/saitarrun/LLM-Powered-Knowledge-Retrieval-Platform/issues?q=label%3A%22help-wanted%22)
+- **Discussion Board**: [Join the conversation](https://github.com/saitarrun/LLM-Powered-Knowledge-Retrieval-Platform/discussions)
+
+### Areas We Need Help With
+- **Backend**: FastAPI routes, agent orchestration, vector search optimization
+- **Frontend**: React components, UI/UX improvements, real-time features
+- **Testing**: pytest suite, E2E tests, integration tests
+- **Documentation**: Architecture guides, API reference, deployment docs
+- **DevOps**: CI/CD, observability, scaling infrastructure
+
+**All skill levels welcome!** Start with documentation, tests, or "good first issue" items.
 
 ## 🛠️ Tech Stack
 

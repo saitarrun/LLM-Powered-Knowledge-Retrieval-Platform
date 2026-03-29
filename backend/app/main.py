@@ -13,25 +13,31 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    description="LM-Powered Knowledge Retrieval Platform API",
+    description="LLM-Powered Knowledge Retrieval Platform API",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
 )
 
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"], # Next.js frontend
+    allow_origins=["http://localhost:3000", "http://localhost:3001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.get("/api/health")
-async def health_check():
-    return {"status": "healthy", "environment": settings.ENVIRONMENT}
-
-from app.api.routes import documents, chat, settings as settings_route
+# Import and include routers
+from app.api import documents, chat, settings as settings_route
 
 app.include_router(documents.router, prefix=settings.API_V1_STR)
 app.include_router(chat.router, prefix=settings.API_V1_STR)
 app.include_router(settings_route.router, prefix=settings.API_V1_STR)
+
+@app.get("/api/health")
+async def health_check():
+    """Primary health check endpoint."""
+    return {"status": "healthy", "environment": settings.ENVIRONMENT}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

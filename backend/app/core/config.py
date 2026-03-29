@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Knowledge Retrieval Platform"
-    API_V1_STR: str = "/api"
+    API_V1_STR: str = "/api/v1"
     
     # Environment
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")

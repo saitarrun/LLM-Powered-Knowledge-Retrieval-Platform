@@ -1,29 +1,38 @@
 #!/usr/bin/env python3
 """
-Claude PR Reviewer — runs inside GitHub Actions.
-Fetches the PR diff, sends it to Claude, and posts a detailed review comment.
+Claude PR Reviewer (via OpenRouter) — runs inside GitHub Actions.
+Fetches the PR diff, sends it to Claude through OpenRouter, and posts a detailed review.
 Also handles /claude commands in PR comments for on-demand responses.
 """
 
 import os
 import sys
-import json
 import httpx
 
-# ── Config ────────────────────────────────────────────────────────────────────
-ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
-GITHUB_TOKEN      = os.environ["GITHUB_TOKEN"]
-REPO              = os.environ["GITHUB_REPOSITORY"]          # owner/repo
-PR_NUMBER         = os.environ.get("PR_NUMBER", "")
-EVENT_NAME        = os.environ.get("GITHUB_EVENT_NAME", "")
-COMMENT_BODY      = os.environ.get("COMMENT_BODY", "")
-CLAUDE_MODEL      = "claude-sonnet-4-6"
+# ── Config ─────────────────────────────────────────────────────────────────────
+OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
+GITHUB_TOKEN       = os.environ["GITHUB_TOKEN"]
+REPO               = os.environ["GITHUB_REPOSITORY"]
+PR_NUMBER          = os.environ.get("PR_NUMBER", "")
+EVENT_NAME         = os.environ.get("GITHUB_EVENT_NAME", "")
+COMMENT_BODY       = os.environ.get("COMMENT_BODY", "")
 
-GH_API   = "https://api.github.com"
-ANT_API  = "https://api.anthropic.com/v1/messages"
+# OpenRouter endpoint (OpenAI-compatible)
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+MODEL          = "anthropic/claude-sonnet-4-5"   # best Claude available on OpenRouter
 
-HEADERS_GH  = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
-HEADERS_ANT = {"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+GH_API      = "https://api.github.com"
+HEADERS_GH  = {
+    "Authorization": f"Bearer {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+}
+HEADERS_OR  = {
+    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+    "Content-Type": "application/json",
+    "HTTP-Referer": f"https://github.com/{REPO}",
+    "X-Title": "Nexus PR Reviewer",
+}
 
 # ── GitHub helpers ─────────────────────────────────────────────────────────────
 def gh_get(path):
@@ -54,7 +63,6 @@ def post_pr_comment(pr_number, body):
     gh_post(f"/repos/{REPO}/issues/{pr_number}/comments", {"body": body})
 
 def post_pr_review(pr_number, body, event="COMMENT"):
-    """event: APPROVE | REQUEST_CHANGES | COMMENT"""
     gh_post(f"/repos/{REPO}/pulls/{pr_number}/reviews", {"body": body, "event": event})
 
 def merge_pr(pr_number, title, sha):
@@ -68,56 +76,71 @@ def get_check_runs(sha):
     data = gh_get(f"/repos/{REPO}/commits/{sha}/check-runs")
     return data.get("check_runs", [])
 
-# ── Claude helper ──────────────────────────────────────────────────────────────
+# ── OpenRouter / Claude helper ─────────────────────────────────────────────────
 def ask_claude(system_prompt, user_message):
     payload = {
-        "model": CLAUDE_MODEL,
+        "model": MODEL,
         "max_tokens": 4096,
-        "system": system_prompt,
-        "messages": [{"role": "user", "content": user_message}],
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_message},
+        ],
     }
-    r = httpx.post(ANT_API, headers=HEADERS_ANT, json=payload, timeout=120)
+    r = httpx.post(OPENROUTER_URL, headers=HEADERS_OR, json=payload, timeout=120)
     r.raise_for_status()
-    return r.json()["content"][0]["text"]
+    return r.json()["choices"][0]["message"]["content"]
 
-# ── Review logic ───────────────────────────────────────────────────────────────
+# ── Review prompt ──────────────────────────────────────────────────────────────
 REVIEW_SYSTEM = """You are an expert code reviewer for the **Nexus** project — an LLM-powered knowledge retrieval platform built with FastAPI (Python) + Next.js (TypeScript) + FAISS + Neo4j.
 
-Your job is to review pull requests with the following checks:
+Review pull requests across these dimensions:
 
-1. **Correctness** — bugs, off-by-one errors, incorrect logic
+1. **Correctness** — bugs, off-by-one errors, wrong logic, unhandled edge cases
 2. **Security** — injection risks, exposed secrets, auth bypasses, OWASP top 10
-3. **Performance** — N+1 queries, blocking async calls, unnecessary re-renders
-4. **Code Quality** — readability, naming, duplication, unnecessary complexity
+3. **Performance** — N+1 DB queries, blocking async calls, unnecessary re-renders
+4. **Code Quality** — readability, naming, duplication, over-engineering
 5. **Tests** — are tests added/updated for the changed code?
 6. **Breaking Changes** — API contract changes, DB schema changes without migrations
 
-Format your review in GitHub Markdown with:
-- A brief **Summary** (2–3 sentences)
-- **Issues Found** (grouped as 🔴 Critical / 🟡 Warning / 🟢 Suggestion)
-- **Verdict**: one of APPROVE ✅ | REQUEST_CHANGES ❌ | NEEDS_DISCUSSION 💬
+Format your response in GitHub Markdown:
 
-Be direct and specific. Reference file paths and line numbers where possible.
-If the diff is clean with no issues, say so confidently."""
+## Summary
+(2–3 sentences on what the PR does and overall quality)
+
+## Issues Found
+### 🔴 Critical
+(bugs, security issues, data loss risks — must fix before merge)
+
+### 🟡 Warnings
+(non-blocking but important: missing tests, performance concerns, unclear naming)
+
+### 🟢 Suggestions
+(optional improvements, style, nice-to-haves)
+
+## Verdict
+**APPROVE ✅** | **REQUEST_CHANGES ❌** | **NEEDS_DISCUSSION 💬**
+
+(one sentence explaining your verdict)
+
+Be direct and reference file paths and line numbers where possible. If the diff is clean with no issues, say so clearly."""
 
 def review_pr(pr_number):
-    pr = get_pr_info(pr_number)
+    pr   = get_pr_info(pr_number)
     diff = get_pr_diff(pr_number)
     head_sha = pr["head"]["sha"]
 
-    # Truncate diff if too large (Claude has a context limit)
     if len(diff) > 80_000:
         diff = diff[:80_000] + "
 
 [... diff truncated due to size ...]"
 
-    user_msg = f"""## Pull Request: {pr['title']}
+    user_msg = f"""## Pull Request #{pr_number}: {pr['title']}
 
 **Author:** {pr['user']['login']}
 **Branch:** `{pr['head']['ref']}` → `{pr['base']['ref']}`
 **Description:** {pr.get('body') or '(no description provided)'}
-**Changed files:** {pr['changed_files']} | **Additions:** +{pr['additions']} | **Deletions:** -{pr['deletions']}
-**Mergeable:** {pr.get('mergeable', 'unknown')} | **Conflicts:** {'YES ⚠️' if pr.get('mergeable') is False else 'None detected'}
+**Stats:** {pr['changed_files']} files changed · +{pr['additions']} additions · -{pr['deletions']} deletions
+**Merge conflicts:** {'YES ⚠️' if pr.get('mergeable') is False else 'None detected'}
 
 ---
 
@@ -129,68 +152,71 @@ def review_pr(pr_number):
 
     review_body = ask_claude(REVIEW_SYSTEM, user_msg)
 
-    # Determine GitHub review event based on Claude's verdict
     event = "COMMENT"
-    if "APPROVE ✅" in review_body or "Verdict**: APPROVE" in review_body:
+    if "APPROVE ✅" in review_body or "**APPROVE" in review_body:
         event = "APPROVE"
-    elif "REQUEST_CHANGES ❌" in review_body or "Verdict**: REQUEST_CHANGES" in review_body:
+    elif "REQUEST_CHANGES ❌" in review_body or "**REQUEST_CHANGES" in review_body:
         event = "REQUEST_CHANGES"
 
-    # Add header to the review
-    header = f"## 🤖 Claude Code Review
+    header = (
+        f"## 🤖 Claude Code Review
 
-> Automated review by [Claude {CLAUDE_MODEL}](https://claude.ai/code) · [View workflow run](https://github.com/{REPO}/actions)
+"
+        f"> Automated review powered by [{MODEL}](https://openrouter.ai) via OpenRouter"
+        f" · [Workflow run](https://github.com/{REPO}/actions)
 
 ---
 
 "
-    full_review = header + review_body
+    )
+    post_pr_review(pr_number, header + review_body, event)
+    print(f"✅ Posted review (event={event}) on PR #{pr_number}")
 
-    post_pr_review(pr_number, full_review, event)
-
-    print(f"✅ Posted review with event={event} on PR #{pr_number}")
-
-    # If approved and no conflicts, check whether CI passed and auto-merge
+    # Auto-merge if approved and no conflicts
     if event == "APPROVE" and pr.get("mergeable") is not False:
-        checks = get_check_runs(head_sha)
-        failed = [c for c in checks if c["conclusion"] in ("failure", "timed_out") and c["name"] != "claude-review"]
-        pending = [c for c in checks if c["status"] in ("queued", "in_progress") and c["name"] != "claude-review"]
+        checks   = get_check_runs(head_sha)
+        failed   = [c for c in checks if c["conclusion"] in ("failure", "timed_out")  and c["name"] != "Claude Code Review"]
+        pending  = [c for c in checks if c["status"]    in ("queued", "in_progress") and c["name"] != "Claude Code Review"]
 
         if failed:
-            comment = f"⚠️ **Claude approved this PR** but the following CI checks are failing — please fix before merging:
-" + \
-                      "
+            lines = "
 ".join(f"- `{c['name']}`: {c['conclusion']}" for c in failed)
-            post_pr_comment(pr_number, comment)
+            post_pr_comment(pr_number, f"⚠️ **Claude approved the code** but these CI checks are failing — fix them before merging:
+{lines}")
         elif pending:
-            post_pr_comment(pr_number, "⏳ **Claude approved this PR.** Waiting for other CI checks to complete before auto-merge is considered.")
+            post_pr_comment(pr_number, "⏳ **Claude approved this PR.** Waiting for other CI checks to finish before considering auto-merge.")
         else:
-            # All checks passed — auto-merge
             try:
                 merge_pr(pr_number, f"{pr['title']} (#{pr_number})", head_sha)
-                post_pr_comment(pr_number, f"🎉 **Auto-merged by Claude!** All checks passed and the code review was clean.
+                post_pr_comment(
+                    pr_number,
+                    f"🎉 **Auto-merged by Claude!**
 
-Squash-merged `{pr['head']['ref']}` → `{pr['base']['ref']}`.")
+"
+                    f"All checks passed and the review was clean.
+"
+                    f"Squash-merged `{pr['head']['ref']}` → `{pr['base']['ref']}`."
+                )
                 print(f"✅ Auto-merged PR #{pr_number}")
             except Exception as e:
-                post_pr_comment(pr_number, f"✅ **Claude approved this PR** but auto-merge failed (possibly needs maintainer merge):
+                post_pr_comment(pr_number, f"✅ **Claude approved this PR** but auto-merge failed (may need maintainer merge):
 ```
 {e}
 ```")
 
-# ── Command handler (/claude ...) ──────────────────────────────────────────────
-COMMAND_SYSTEM = """You are Claude, an AI assistant embedded in the GitHub PR workflow for the Nexus project.
-A developer has sent you a command or question in a PR comment using `/claude`.
-Answer helpfully and concisely. You have access to the PR context provided.
-Format your response in GitHub Markdown. Keep it focused and actionable."""
+# ── /claude command handler ─────────────────────────────────────────────────────
+COMMAND_SYSTEM = """You are Claude, an AI assistant embedded in the GitHub PR workflow for the Nexus LLM knowledge retrieval platform.
+A developer has addressed you directly in a PR comment using `/claude`.
+Answer helpfully, concisely, and with concrete actionable advice.
+You have access to the full PR diff and metadata provided in the message.
+Format your response in GitHub Markdown."""
 
 def handle_comment_command(pr_number, comment_body):
-    # Strip the /claude prefix
-    question = comment_body.replace("/claude", "").strip()
+    question = comment_body.replace("/claude", "", 1).strip()
     if not question:
-        question = "Please summarize this PR and suggest what to check before merging."
+        question = "Summarize this PR and tell me what to verify before merging."
 
-    pr = get_pr_info(pr_number)
+    pr   = get_pr_info(pr_number)
     diff = get_pr_diff(pr_number)
     if len(diff) > 40_000:
         diff = diff[:40_000] + "
@@ -203,7 +229,7 @@ def handle_comment_command(pr_number, comment_body):
 **Branch:** `{pr['head']['ref']}` → `{pr['base']['ref']}`
 **Description:** {pr.get('body') or '(none)'}
 
-## Diff (truncated)
+## Diff
 ```diff
 {diff}
 ```
@@ -212,16 +238,22 @@ def handle_comment_command(pr_number, comment_body):
 {question}"""
 
     answer = ask_claude(COMMAND_SYSTEM, user_msg)
-    full_response = f"## 🤖 Claude Response
+    preview = question[:120] + ("..." if len(question) > 120 else "")
+    full_response = (
+        f"## 🤖 Claude
 
-> Replying to: *{question[:100]}{'...' if len(question) > 100 else ''}*
+"
+        f"> Replying to: *{preview}*
 
 ---
 
-{answer}
+"
+        f"{answer}
 
----
-*[Claude {CLAUDE_MODEL}](https://claude.ai/code)*"
+"
+        f"---
+*[{MODEL}](https://openrouter.ai) via OpenRouter*"
+    )
     post_pr_comment(pr_number, full_response)
     print(f"✅ Replied to /claude command on PR #{pr_number}")
 

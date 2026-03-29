@@ -1,4 +1,4 @@
-name: Claude Post-Deploy Smoke Tests
+name: Post-Deploy Smoke Tests
 
 on:
   push:

@@ -294,8 +294,7 @@ if __name__ == "__main__":
     critical_failures = [r for r in results if r["status"] == "FAIL" and
                          r["name"] in ("Backend Health", "Frontend Loads", "Chat Endpoint Reachable")]
 
-    print(f"
-📊 Results: {passed} passed, {failed} failed")
+    print(f"📊 Results: {passed} passed, {failed} failed")
 
     # Get docker logs for context if there are failures
     docker_logs = ""
@@ -304,8 +303,7 @@ if __name__ == "__main__":
         docker_logs = get_docker_logs()
 
     # Build test table for Claude
-    table_rows = "
-".join(
+    table_rows = "\n".join(
         f"| {r['name']} | {'✅ PASS' if r['status'] == 'PASS' else '❌ FAIL'} | {r['latency_ms']}ms | {r['detail']} |"
         for r in results
     )

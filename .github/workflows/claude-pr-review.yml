@@ -7,17 +7,16 @@ on:
     types: [created]
 
 permissions:
-  contents: write        # needed for auto-merge
-  pull-requests: write   # post reviews and comments
-  issues: write          # post comments
-  checks: read           # read CI check results
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: read
 
 jobs:
   claude-review:
     name: Claude Code Review
     runs-on: ubuntu-latest
 
-    # For issue_comment: only run when comment is on a PR and starts with /claude
     if: |
       github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' &&
@@ -47,7 +46,7 @@ jobs:
 
       - name: Run Claude review
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}

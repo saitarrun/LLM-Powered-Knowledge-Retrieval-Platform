@@ -1,29 +1,74 @@
 "use client";
 
-import { useState, useRef, useEffect, Suspense } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useRef, useEffect, FormEvent } from "react";
+import { motion } from "framer-motion";
 import { 
-  Send, User, Bot, Sparkles, Loader2, ArrowRight, 
-  Terminal, ShieldCheck, Search, Database, Fingerprint, RefreshCw, Cpu
+  Send, User, Bot, Loader2, 
+  Terminal, ShieldCheck, Search, Database, Fingerprint, Cpu
 } from "lucide-react";
-import { api } from "@/services/api";
+
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  citations?: Citation[];
+};
+
+type Citation = {
+  id?: string | number;
+  document_name?: string;
+  chunk_text?: string;
+  page?: string | number;
+};
+
+type TraceEvent = {
+  agent?: string;
+  action?: string;
+  result?: string;
+};
+
+type StreamEvent =
+  | { type: "token"; token?: string; data?: string }
+  | { type: "trace"; agent?: string; action?: string; result?: string }
+  | { type: "citations"; citations?: Citation[]; data?: Citation[] }
+  | { type: "error"; message?: string }
+  | { type: "done" };
+
+function parseSseEvents(buffer: string) {
+  const frames = buffer.split("\n\n");
+  const remainder = frames.pop() ?? "";
+
+  const events = frames
+    .map((frame) => {
+      const data = frame
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.replace(/^data:\s?/, ""))
+        .join("\n");
+
+      if (!data) return null;
+      return JSON.parse(data) as StreamEvent;
+    })
+    .filter(Boolean) as StreamEvent[];
+
+  return { events, remainder };
+}
 
 export default function ChatPage() {
   const [query, setQuery] = useState("");
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [traces, setTraces] = useState<any[]>([]);
+  const [traces, setTraces] = useState<TraceEvent[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, traces]);
 
-  const handleSubmit = async (e: any) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!query.trim() || loading) return;
 
-    const userMsg = { role: "user", content: query };
+    const userMsg: ChatMessage = { role: "user", content: query };
     setMessages(prev => [...prev, userMsg]);
     setQuery("");
     setLoading(true);
@@ -38,46 +83,54 @@ export default function ChatPage() {
         body: JSON.stringify({ query: userMsg.content, top_k: 5 }),
       });
 
-      if (!response.body) return;
+      if (!response.ok || !response.body) {
+        throw new Error(`Chat stream failed with status ${response.status}`);
+      }
+
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       
-      let assistantMsg = { role: "assistant", content: "", citations: [] };
+      const assistantMsg: ChatMessage = { role: "assistant", content: "", citations: [] };
+      let pendingBuffer = "";
       setMessages(prev => [...prev, assistantMsg]);
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n\n");
+        pendingBuffer += decoder.decode(value, { stream: true });
+        const { events, remainder } = parseSseEvents(pendingBuffer);
+        pendingBuffer = remainder;
         
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const data = JSON.parse(line.replace("data: ", ""));
-          const event = line.match(/event: (.*)/)?.[1] || "token";
-
-          if (event === "token") {
-            assistantMsg.content += data;
+        for (const event of events) {
+          if (event.type === "token") {
+            assistantMsg.content += event.token ?? event.data ?? "";
             setMessages(prev => {
               const newMsgs = [...prev];
               newMsgs[newMsgs.length - 1] = { ...assistantMsg };
               return newMsgs;
             });
-          } else if (event === "trace") {
-            setTraces(prev => [...prev, data]);
-          } else if (event === "citations") {
-            assistantMsg.citations = data;
+          } else if (event.type === "trace") {
+            setTraces(prev => [...prev, event]);
+          } else if (event.type === "citations") {
+            assistantMsg.citations = event.citations ?? event.data ?? [];
             setMessages(prev => {
               const newMsgs = [...prev];
               newMsgs[newMsgs.length - 1] = { ...assistantMsg };
               return newMsgs;
             });
+          } else if (event.type === "error") {
+            throw new Error(event.message || "Chat stream failed");
           }
         }
       }
     } catch (err) {
       console.error("Chat error:", err);
+      const message = err instanceof Error ? err.message : "Unable to complete the chat request.";
+      setMessages(prev => [
+        ...prev,
+        { role: "assistant", content: `Stream error: ${message}`, citations: [] }
+      ]);
     } finally {
       setLoading(false);
     }
@@ -139,12 +192,12 @@ export default function ChatPage() {
                        <Loader2 className="animate-spin opacity-20" size={24} />
                     )}
                   </div>
-                  {m.citations?.length > 0 && (
+                  {!!m.citations?.length && (
                     <div className="flex flex-wrap gap-3 ml-2">
-                       {m.citations.map((c: any, ci: number) => (
+                       {m.citations.map((c, ci) => (
                          <div key={ci} className="px-4 py-1.5 bg-surface-container-highest rounded-full border border-outline-variant flex items-center gap-2">
                             <Database size={12} className="text-primary/40" />
-                            <span className="text-[10px] font-black tracking-widest text-on-surface/60 uppercase">{c.document_name} • P.{c.page}</span>
+                            <span className="text-[10px] font-black tracking-widest text-on-surface/60 uppercase">{c.document_name || "Source"} • {c.page ? `P.${c.page}` : `Chunk ${c.id ?? ci + 1}`}</span>
                          </div>
                        ))}
                     </div>

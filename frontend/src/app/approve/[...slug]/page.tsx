@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use, Suspense } from "react";
+import { useState, use } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, XCircle, Shield, Loader2, Lock, ArrowRight } from "lucide-react";
 
@@ -155,4 +155,14 @@ function ApproveContent({ params }: { params: { slug: string[] } }) {
       </AnimatePresence>
     </div>
   );
+}
+
+export default function ApprovePage({
+  params,
+}: {
+  params: Promise<{ slug: string[] }>;
+}) {
+  const resolvedParams = use(params);
+
+  return <ApproveContent params={resolvedParams} />;
 }

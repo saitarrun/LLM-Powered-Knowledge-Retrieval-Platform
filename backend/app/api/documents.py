@@ -15,8 +15,34 @@ from app.core.permissions import require_role, TokenData
 from app.ingestion.pipeline import pipeline
 from app.vectorstore.faiss_store import FaissStore
 from app.services.embedding import embedding_service
+from app.graph.extractor import graph_extractor
 
 router = APIRouter(tags=["documents"])
+
+
+@router.get("/documents/graph")
+async def get_documents_graph():
+    """Get knowledge graph topology and sanitized health status."""
+    try:
+        return await graph_extractor.get_topology_with_health()
+    except Exception as e:
+        logger.error(f"Graph endpoint error: {e}")
+        return {
+            "nodes": [],
+            "links": [],
+            "health": {
+                "status": "unavailable",
+                "neo4j_available": False,
+                "node_count": 0,
+                "relationship_count": 0,
+                "document_count": 0,
+                "chunk_count": 0,
+                "entity_count": 0,
+                "disconnected_document_count": 0,
+                "partial_extraction": False,
+                "errors": ["Graph service unavailable"],
+            },
+        }
 
 
 class DocumentResponse(BaseModel):

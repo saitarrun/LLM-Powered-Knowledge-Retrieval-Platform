@@ -4,8 +4,9 @@ import { useState, useRef, useEffect, FormEvent } from "react";
 import { motion } from "framer-motion";
 import { 
   Send, User, Bot, Loader2, 
-  Terminal, ShieldCheck, Search, Database, Fingerprint, Cpu
+  Terminal, ShieldCheck, Search, Database, Fingerprint, Cpu, FileText, AlertCircle, X
 } from "lucide-react";
+import { getCitationLabel, getCitationSnippet, isCitationAvailable } from "./citationHelpers";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -15,9 +16,34 @@ type ChatMessage = {
 
 type Citation = {
   id?: string | number;
+  chunk_id?: string;
+  document_id?: string;
   document_name?: string;
   chunk_text?: string;
+  snippet?: string;
   page?: string | number;
+  available?: boolean;
+};
+
+type SourceContext = {
+  available: boolean;
+  message?: string;
+  document?: {
+    id: string;
+    filename: string;
+    status?: string;
+    created_at?: string | null;
+    indexed_at?: string | null;
+  };
+  chunk?: {
+    id: string;
+    document_id: string;
+    text?: string;
+    preview?: string;
+    page_number?: number | null;
+    chunk_index?: number | null;
+    token_count?: number | null;
+  };
 };
 
 type TraceEvent = {
@@ -58,6 +84,8 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [traces, setTraces] = useState<TraceEvent[]>([]);
+  const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
+  const [sourceLoading, setSourceLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -136,6 +164,68 @@ export default function ChatPage() {
     }
   };
 
+  const handleCitationClick = async (citation: Citation, index: number) => {
+    if (!isCitationAvailable(citation)) {
+      setSourceContext({
+        available: false,
+        message: getCitationSnippet(citation),
+        document: {
+          id: String(citation.document_id || ""),
+          filename: citation.document_name || "Source unavailable",
+        },
+        chunk: {
+          id: String(citation.chunk_id || citation.id || index + 1),
+          document_id: String(citation.document_id || ""),
+          preview: getCitationSnippet(citation),
+        },
+      });
+      return;
+    }
+
+    setSourceLoading(true);
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || "/nexus-proxy/v1";
+      const response = await fetch(`${apiBase}/documents/${citation.document_id}/chunks/${citation.chunk_id}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        const detail = typeof data?.detail === "object" ? data.detail : null;
+        setSourceContext({
+          available: false,
+          message: detail?.message || "Source document or chunk is unavailable.",
+          document: {
+            id: String(citation.document_id || ""),
+            filename: citation.document_name || "Source unavailable",
+          },
+          chunk: {
+            id: String(citation.chunk_id || citation.id || index + 1),
+            document_id: String(citation.document_id || ""),
+            preview: getCitationSnippet(citation),
+          },
+        });
+        return;
+      }
+
+      setSourceContext(data);
+    } catch {
+      setSourceContext({
+        available: false,
+        message: "Source context could not be loaded.",
+        document: {
+          id: String(citation.document_id || ""),
+          filename: citation.document_name || "Source unavailable",
+        },
+        chunk: {
+          id: String(citation.chunk_id || citation.id || index + 1),
+          document_id: String(citation.document_id || ""),
+          preview: getCitationSnippet(citation),
+        },
+      });
+    } finally {
+      setSourceLoading(false);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto h-[calc(100vh-160px)] flex flex-col gap-12">
       {/* Header Module */}
@@ -192,16 +282,21 @@ export default function ChatPage() {
                        <Loader2 className="animate-spin opacity-20" size={24} />
                     )}
                   </div>
-                  {!!m.citations?.length && (
-                    <div className="flex flex-wrap gap-3 ml-2">
-                       {m.citations.map((c, ci) => (
-                         <div key={ci} className="px-4 py-1.5 bg-surface-container-highest rounded-full border border-outline-variant flex items-center gap-2">
-                            <Database size={12} className="text-primary/40" />
-                            <span className="text-[10px] font-black tracking-widest text-on-surface/60 uppercase">{c.document_name || "Source"} • {c.page ? `P.${c.page}` : `Chunk ${c.id ?? ci + 1}`}</span>
-                         </div>
-                       ))}
-                    </div>
-                  )}
+	                  {!!m.citations?.length && (
+	                    <div className="flex flex-wrap gap-3 ml-2">
+	                       {m.citations.map((c, ci) => (
+	                         <button
+                              key={ci}
+                              type="button"
+                              onClick={() => handleCitationClick(c, ci)}
+                              className="px-4 py-1.5 bg-surface-container-highest rounded-full border border-outline-variant flex items-center gap-2 hover:border-secondary/60 hover:bg-secondary/10 transition-colors text-left"
+                            >
+	                            <Database size={12} className={isCitationAvailable(c) ? "text-primary/60" : "text-red-500/60"} />
+	                            <span className="text-[10px] font-black tracking-widest text-on-surface/60 uppercase">{getCitationLabel(c, ci)}</span>
+	                         </button>
+	                       ))}
+	                    </div>
+	                  )}
                 </div>
                 {m.role === 'user' && (
                   <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center shrink-0 shadow-lg mt-2">
@@ -233,9 +328,76 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Intelligence Trace Module */}
-        <div className="w-96 flex flex-col gap-8">
-          <div className="bg-surface p-10 border border-on-surface/5 shadow-premium flex-1 overflow-hidden flex flex-col relative group">
+	        {/* Intelligence Trace Module */}
+	        <div className="w-96 flex flex-col gap-8">
+            <div className="bg-surface p-8 border border-on-surface/5 shadow-premium min-h-[260px] flex flex-col gap-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <FileText size={18} className="text-secondary" />
+                  <span className="label-sm tracking-[0.35em] font-black opacity-40">Source Context</span>
+                </div>
+                {sourceContext && (
+                  <button
+                    type="button"
+                    onClick={() => setSourceContext(null)}
+                    className="w-8 h-8 flex items-center justify-center text-on-surface/30 hover:text-on-surface transition-colors"
+                    aria-label="Close source context"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+
+              {sourceLoading ? (
+                <div className="flex-1 flex items-center justify-center">
+                  <Loader2 size={22} className="animate-spin text-on-surface/20" />
+                </div>
+              ) : sourceContext ? (
+                <div className="space-y-5">
+                  <div className="flex items-start gap-3">
+                    {sourceContext.available ? (
+                      <ShieldCheck size={18} className="text-emerald-500 mt-1" />
+                    ) : (
+                      <AlertCircle size={18} className="text-red-500 mt-1" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-black tracking-wide text-on-surface truncate">
+                        {sourceContext.document?.filename || "Source unavailable"}
+                      </p>
+                      <p className="label-sm opacity-40 text-[9px] tracking-[0.2em] uppercase">
+                        {sourceContext.available ? `Chunk ${sourceContext.chunk?.id}` : "Unavailable reference"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-5 bg-surface-container-low border-l-2 border-secondary/40 rounded-r-2xl">
+                    <p className="text-xs leading-relaxed text-on-surface/70">
+                      {sourceContext.chunk?.preview || sourceContext.message || "Preview unavailable."}
+                    </p>
+                  </div>
+
+                  {sourceContext.available && (
+                    <div className="grid grid-cols-2 gap-4 pt-2">
+                      <div>
+                        <p className="label-sm text-[9px] opacity-30 tracking-widest">PAGE</p>
+                        <p className="text-sm font-bold">{sourceContext.chunk?.page_number ?? "N/A"}</p>
+                      </div>
+                      <div>
+                        <p className="label-sm text-[9px] opacity-30 tracking-widest">INDEX</p>
+                        <p className="text-sm font-bold">{sourceContext.chunk?.chunk_index ?? "N/A"}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-center gap-3 opacity-20">
+                  <FileText size={34} strokeWidth={1} />
+                  <p className="label-sm tracking-[0.3em] font-bold uppercase">Select a citation</p>
+                </div>
+              )}
+            </div>
+
+	          <div className="bg-surface p-10 border border-on-surface/5 shadow-premium flex-1 overflow-hidden flex flex-col relative group">
              <div className="absolute top-0 right-0 w-32 h-32 bg-secondary/5 blur-[80px] rounded-full" />
              <div className="flex items-center gap-4 mb-10 relative z-10">
                 <Terminal size={18} className="text-secondary" />

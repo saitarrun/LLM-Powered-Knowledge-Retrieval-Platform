@@ -1,4 +1,5 @@
 import json
+from uuid import uuid4
 from typing import Optional, List, Dict, Any, Tuple
 from app.core.config import settings
 from app.core.logging import logger
@@ -14,7 +15,8 @@ class SemanticCache:
         if not results: return None
         best_match = results[0]
         if best_match["score"] >= self.threshold:
-            return json.loads(best_match["metadata"]["state_json"])
+            state_json = best_match["metadata"].get("state_json")
+            return json.loads(state_json) if state_json else None
         return None
 
     def add(self, query_embedding: List[float], state: Dict[str, Any]):
@@ -24,4 +26,8 @@ class SemanticCache:
             "cached": True
         }
         metadata = {"state_json": json.dumps(cache_data)}
-        self.store.add_embeddings([query_embedding], [metadata])
+        self.store.add_embeddings(
+            [query_embedding],
+            [f"cache:{uuid4()}"],
+            metadatas=[metadata],
+        )

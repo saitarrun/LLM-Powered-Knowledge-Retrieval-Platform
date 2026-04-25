@@ -27,8 +27,11 @@ app.add_middleware(
 )
 
 # Import and include routers
-from app.api import documents, chat, settings as settings_route
+from app.api import documents, chat, settings as settings_route, auth, users, approval
 
+app.include_router(auth.router, prefix=settings.API_V1_STR)
+app.include_router(users.router, prefix=settings.API_V1_STR)
+app.include_router(approval.router, prefix=settings.API_V1_STR)
 app.include_router(documents.router, prefix=settings.API_V1_STR)
 app.include_router(chat.router, prefix=settings.API_V1_STR)
 app.include_router(settings_route.router, prefix=settings.API_V1_STR)

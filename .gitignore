@@ -23,3 +23,5 @@ build/
 # IDE
 .vscode/
 .idea/
+# Added by code-review-graph
+.code-review-graph/

@@ -21,16 +21,17 @@ class Orchestrator:
         self.web_search = WebSearchAgent()
         self.sql_analyst = SQLAnalystAgent()
 
-    async def run(self, query: str, top_k: number = 5, session_id: str = "default"):
+    async def run(self, query: str, top_k: int = 5, session_id: str = "default", db=None, filters=None):
         state = {
             "query": query,
             "session_id": session_id,
-            "config": {"top_k": top_k},
+            "config": {"top_k": top_k, "filters": filters or {}},
             "traces": [],
             "retrieved_candidates": [],
             "reranked_chunks": [],
             "synthesis_result": {},
-            "validation": {}
+            "validation": {},
+            "db": db
         }
         
         start_time = asyncio.get_event_loop().time()

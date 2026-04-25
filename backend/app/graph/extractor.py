@@ -73,37 +73,153 @@ class GraphExtractor:
         return results
 
     async def get_full_graph(self):
-        nodes = []
-        links = []
-        node_ids = set()
-        
+        graph = await self.get_topology_with_health()
+        return {"nodes": graph["nodes"], "links": graph["links"]}
+
+    def _empty_graph(self, status: str, neo4j_available: bool, errors: list[str] | None = None):
+        return {
+            "nodes": [],
+            "links": [],
+            "health": {
+                "status": status,
+                "neo4j_available": neo4j_available,
+                "node_count": 0,
+                "relationship_count": 0,
+                "document_count": 0,
+                "chunk_count": 0,
+                "entity_count": 0,
+                "disconnected_document_count": 0,
+                "partial_extraction": False,
+                "errors": errors or [],
+            },
+        }
+
+    async def get_topology_with_health(self):
+        nodes: list[dict] = []
+        links: list[dict] = []
+        node_ids: set[str] = set()
+        errors: list[str] = []
+
         async with self.driver.session() as session:
             try:
-                # Get all entities and relationships
+                connectivity = await session.run("RETURN 1 AS ok")
+                await connectivity.consume()
+
                 result = await session.run(
-                    "MATCH (n:Entity)-[r]->(m:Entity) RETURN n.id as source, type(r) as type, m.id as target LIMIT 200"
+                    """
+                    MATCH (n)-[r]->(m)
+                    RETURN labels(n) AS source_labels,
+                           coalesce(n.id, n.name, elementId(n)) AS source_id,
+                           coalesce(n.filename, n.title, n.id, elementId(n)) AS source_label,
+                           type(r) AS type,
+                           labels(m) AS target_labels,
+                           coalesce(m.id, m.name, elementId(m)) AS target_id,
+                           coalesce(m.filename, m.title, m.id, elementId(m)) AS target_label
+                    LIMIT 300
+                    """
                 )
                 async for record in result:
-                    source = record["source"]
-                    target = record["target"]
+                    source = str(record["source_id"])
+                    target = str(record["target_id"])
                     rel_type = record["type"]
-                    
+
                     if source not in node_ids:
-                        nodes.append({"id": source, "label": source, "group": 1})
+                        source_type = self._node_type(record["source_labels"])
+                        nodes.append({
+                            "id": source,
+                            "label": record["source_label"] or source,
+                            "type": source_type,
+                            "group": source_type,
+                        })
                         node_ids.add(source)
                     if target not in node_ids:
-                        nodes.append({"id": target, "label": target, "group": 2})
+                        target_type = self._node_type(record["target_labels"])
+                        nodes.append({
+                            "id": target,
+                            "label": record["target_label"] or target,
+                            "type": target_type,
+                            "group": target_type,
+                        })
                         node_ids.add(target)
-                        
+
                     links.append({
                         "source": source,
                         "target": target,
                         "type": rel_type
                     })
+
+                isolated_documents = await session.run(
+                    """
+                    MATCH (d:Document)
+                    WHERE NOT (d)--()
+                    RETURN coalesce(d.id, elementId(d)) AS id,
+                           coalesce(d.filename, d.title, d.id, elementId(d)) AS label
+                    LIMIT 100
+                    """
+                )
+                async for record in isolated_documents:
+                    document_id = str(record["id"])
+                    if document_id in node_ids:
+                        continue
+                    nodes.append({
+                        "id": document_id,
+                        "label": record["label"] or document_id,
+                        "type": "document",
+                        "group": "document",
+                        "connected": False,
+                    })
+                    node_ids.add(document_id)
             except Exception as e:
                 logger.error(f"Failed to fetch full graph: {e}")
-                
-        return {"nodes": nodes, "links": links}
+                return self._empty_graph("unavailable", False, ["Neo4j unavailable"])
+
+        counts = self._count_nodes(nodes)
+        partial_extraction = bool(nodes) and (counts["document_count"] == 0 or counts["entity_count"] == 0)
+        status = "empty"
+        if nodes:
+            status = "partial" if partial_extraction else "healthy"
+
+        return {
+            "nodes": nodes,
+            "links": links,
+            "health": {
+                "status": status,
+                "neo4j_available": True,
+                "node_count": len(nodes),
+                "relationship_count": len(links),
+                "document_count": counts["document_count"],
+                "chunk_count": counts["chunk_count"],
+                "entity_count": counts["entity_count"],
+                "disconnected_document_count": counts["disconnected_document_count"],
+                "partial_extraction": partial_extraction,
+                "errors": errors,
+            },
+        }
+
+    def _node_type(self, labels):
+        normalized = {str(label).lower() for label in labels or []}
+        if "document" in normalized:
+            return "document"
+        if "documentchunk" in normalized or "chunk" in normalized:
+            return "chunk"
+        if "relationship" in normalized:
+            return "relationship"
+        return "entity"
+
+    def _count_nodes(self, nodes: list[dict]):
+        document_count = sum(1 for node in nodes if node.get("type") == "document")
+        chunk_count = sum(1 for node in nodes if node.get("type") == "chunk")
+        entity_count = sum(1 for node in nodes if node.get("type") == "entity")
+        disconnected_document_count = sum(
+            1 for node in nodes
+            if node.get("type") == "document" and not node.get("connected", True)
+        )
+        return {
+            "document_count": document_count,
+            "chunk_count": chunk_count,
+            "entity_count": entity_count,
+            "disconnected_document_count": disconnected_document_count,
+        }
 
     async def close(self):
         await self.driver.close()

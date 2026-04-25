@@ -81,6 +81,15 @@ def merge_pr(pr_number, title, sha):
         "merge_method": "squash",
     })
 
+def post_ai_unavailable(pr_number, action, error):
+    post_comment(
+        pr_number,
+        "## 🤖 Claude Automation Unavailable\n\n"
+        f"Claude could not {action} because the OpenRouter request failed:\n\n"
+        f"```\n{type(error).__name__}: {str(error)[:500]}\n```\n\n"
+        "This is an external AI service failure, so the workflow is not blocking the PR."
+    )
+
 # ── OpenRouter / Claude ────────────────────────────────────────────────────────
 
 def ask_claude(system_prompt, user_message, max_tokens=6000):
@@ -120,10 +129,7 @@ def build_codebase_context(changed_files):
     for path in CONTEXT_FILES:
         content = get_file_content(path)
         if content:
-            context_parts.append(f"### {path} (existing)
-```
-{content[:3000]}
-```")
+            context_parts.append(f"### {path} (existing)\n```\n{content[:3000]}\n```")
 
     # Include current (pre-PR) version of every modified file
     for f in changed_files:
@@ -132,14 +138,11 @@ def build_codebase_context(changed_files):
             content = get_file_content(filename)
             if content:
                 snippet = content[:4000]
-                context_parts.append(f"### {filename} (CURRENT version before this PR)
-```
-{snippet}
-```")
+                context_parts.append(
+                    f"### {filename} (CURRENT version before this PR)\n```\n{snippet}\n```"
+                )
 
-    return "
-
-".join(context_parts)
+    return "\n\n".join(context_parts)
 
 # ── Review prompt ──────────────────────────────────────────────────────────────
 
@@ -245,17 +248,16 @@ def review_pr(pr_number):
 
     # Truncate diff if huge
     if len(diff) > 70_000:
-        diff = diff[:70_000] + "
-
-[... diff truncated — review remaining files manually ...]"
+        diff = diff[:70_000] + "\n\n[... diff truncated — review remaining files manually ...]"
 
     # Conflict detection
     mergeable    = pr.get("mergeable")
     conflict_msg = ""
     if mergeable is False:
-        conflict_msg = "
-
-> ⚠️ **MERGE CONFLICT DETECTED** — this PR cannot be merged until conflicts are resolved."
+        conflict_msg = (
+            "\n\n> ⚠️ **MERGE CONFLICT DETECTED** — "
+            "this PR cannot be merged until conflicts are resolved."
+        )
 
     user_msg = f"""## Pull Request #{pr_number}: {pr['title']}
 
@@ -283,7 +285,12 @@ def review_pr(pr_number):
 ```"""
 
     print("🤖 Asking Claude to review...")
-    review_body  = ask_claude(REVIEW_SYSTEM, user_msg)
+    try:
+        review_body = ask_claude(REVIEW_SYSTEM, user_msg)
+    except Exception as e:
+        print(f"⚠️ Claude review unavailable: {e}")
+        post_ai_unavailable(pr_number, "review this PR", e)
+        return
 
     # Determine event
     event = "COMMENT"
@@ -293,17 +300,11 @@ def review_pr(pr_number):
         event = "REQUEST_CHANGES"
 
     header = (
-        f"## 🤖 Claude Code Review{conflict_msg}
-
-"
+        f"## 🤖 Claude Code Review{conflict_msg}\n\n"
         f"> **Model:** [{MODEL}](https://openrouter.ai) · "
         f"**PR:** #{pr_number} · "
-        f"[Workflow run](https://github.com/{REPO}/actions)
-
-"
-        f"---
-
-"
+        f"[Workflow run](https://github.com/{REPO}/actions)\n\n"
+        f"---\n\n"
     )
 
     post_review(pr_number, header + review_body, event)
@@ -312,31 +313,17 @@ def review_pr(pr_number):
     # If there are merge conflicts, post a dedicated comment explaining how to fix
     if mergeable is False:
         conflict_help = (
-            "## ⚠️ Merge Conflicts Need to Be Resolved
-
-"
-            "Your branch has conflicts with `main`. Here's how to fix them:
-
-"
-            "```bash
-"
-            f"git checkout {pr['head']['ref']}
-"
-            f"git fetch origin
-"
-            f"git rebase origin/{base_ref}
-"
-            "# resolve any conflicts in your editor
-"
-            "git add .
-"
-            "git rebase --continue
-"
-            "git push --force-with-lease
-"
-            "```
-
-"
+            "## ⚠️ Merge Conflicts Need to Be Resolved\n\n"
+            "Your branch has conflicts with `main`. Here's how to fix them:\n\n"
+            "```bash\n"
+            f"git checkout {pr['head']['ref']}\n"
+            "git fetch origin\n"
+            f"git rebase origin/{base_ref}\n"
+            "# resolve any conflicts in your editor\n"
+            "git add .\n"
+            "git rebase --continue\n"
+            "git push --force-with-lease\n"
+            "```\n\n"
             "Once conflicts are resolved and you push, Claude will re-review automatically."
         )
         post_comment(pr_number, conflict_help)
@@ -350,27 +337,23 @@ def review_pr(pr_number):
         pending = [c for c in checks if c["status"]    in ("queued", "in_progress") and "claude" not in c["name"].lower()]
 
         if failed:
-            lines = "
-".join(f"- `{c['name']}`: {c['conclusion']} — [view]({c['html_url']})" for c in failed)
-            post_comment(pr_number,
-                f"## ✅ Claude Approved — But CI Is Failing
-
-"
-                f"The code review passed but these checks need to be fixed before merge:
-
-{lines}
-
-"
-                f"Fix the failures, push, and Claude will re-review and auto-merge once everything is green."
+            lines = "\n".join(
+                f"- `{c['name']}`: {c['conclusion']} — [view]({c['html_url']})"
+                for c in failed
+            )
+            post_comment(
+                pr_number,
+                "## ✅ Claude Approved — But CI Is Failing\n\n"
+                "The code review passed but these checks need to be fixed before merge:\n\n"
+                f"{lines}\n\n"
+                "Fix the failures, push, and Claude will re-review and auto-merge once everything is green."
             )
             print("⚠️ Approved but CI failing — posted CI failure comment")
         elif pending:
-            post_comment(pr_number,
-                "## ✅ Claude Approved — Waiting for CI
-
-"
-                "The code review passed. Waiting for other CI checks to finish.
-"
+            post_comment(
+                pr_number,
+                "## ✅ Claude Approved — Waiting for CI\n\n"
+                "The code review passed. Waiting for other CI checks to finish.\n"
                 "Claude will auto-merge once all checks are green."
             )
             print("⏳ Approved, CI pending")
@@ -378,27 +361,20 @@ def review_pr(pr_number):
             # All clear — merge it
             try:
                 merge_pr(pr_number, f"{pr['title']} (#{pr_number})", head_sha)
-                post_comment(pr_number,
-                    f"## 🎉 Merged by Claude!
-
-"
-                    f"Code review passed, all CI checks green — squash-merged into `{base_ref}`.
-
-"
+                post_comment(
+                    pr_number,
+                    "## 🎉 Merged by Claude!\n\n"
+                    f"Code review passed, all CI checks green — squash-merged into `{base_ref}`.\n\n"
                     f"Thanks for the contribution, @{pr['user']['login']}! 🙌"
                 )
                 print(f"🎉 Auto-merged PR #{pr_number}")
             except Exception as e:
-                post_comment(pr_number,
-                    f"## ✅ Claude Approved
-
-"
-                    f"Review passed but auto-merge failed (repo may require maintainer approval):
-```
-{e}
-```
-"
-                    f"A maintainer can merge manually."
+                post_comment(
+                    pr_number,
+                    "## ✅ Claude Approved\n\n"
+                    "Review passed but auto-merge failed (repo may require maintainer approval):\n"
+                    f"```\n{e}\n```\n"
+                    "A maintainer can merge manually."
                 )
 
 # ── /claude command handler ────────────────────────────────────────────────────
@@ -424,9 +400,7 @@ def handle_comment_command(pr_number, comment_body):
     changed_files = get_pr_files(pr_number)
 
     if len(diff) > 40_000:
-        diff = diff[:40_000] + "
-
-[... diff truncated ...]"
+        diff = diff[:40_000] + "\n\n[... diff truncated ...]"
 
     codebase_ctx = build_codebase_context(changed_files)
 
@@ -447,20 +421,17 @@ def handle_comment_command(pr_number, comment_body):
 ## Developer's Question
 {question}"""
 
-    answer  = ask_claude(COMMAND_SYSTEM, user_msg)
+    try:
+        answer = ask_claude(COMMAND_SYSTEM, user_msg)
+    except Exception as e:
+        print(f"⚠️ Claude reply unavailable: {e}")
+        post_ai_unavailable(pr_number, "answer this /claude request", e)
+        return
     preview = question[:120] + ("..." if len(question) > 120 else "")
-    post_comment(pr_number,
-        f"## 🤖 Claude
-
-> *{preview}*
-
----
-
-{answer}
-
-"
-        f"---
-*[{MODEL}](https://openrouter.ai) via OpenRouter · "
+    post_comment(
+        pr_number,
+        f"## 🤖 Claude\n\n> *{preview}*\n\n---\n\n{answer}\n\n"
+        f"---\n*[{MODEL}](https://openrouter.ai) via OpenRouter · "
         f"Reply with `/claude <question>` for follow-ups*"
     )
     print(f"✅ Replied to /claude on PR #{pr_number}")

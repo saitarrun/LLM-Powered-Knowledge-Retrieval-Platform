@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import type { ForceGraphMethods, NodeObject } from "react-force-graph-2d";
 import { Activity, AlertTriangle, Cpu, FileText, Layers, Network, Shield, Zap } from "lucide-react";
 import {
   getGraphHealthState,
@@ -44,11 +45,16 @@ type GraphPayload = {
   health: GraphHealth;
 };
 
+type ForceGraphNode = NodeObject<{
+  label?: string;
+  type?: string;
+}>;
+
 export default function GraphPage() {
   const [graphData, setGraphData] = useState<GraphPayload>({ nodes: [], links: [], health: {} });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const fgRef = useRef<{ zoomToFit?: (duration?: number, padding?: number) => void } | null>(null);
+  const fgRef = useRef<ForceGraphMethods | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,8 +93,8 @@ export default function GraphPage() {
     fgRef.current?.zoomToFit?.(500, 60);
   };
 
-  const drawNode = (node: GraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
-    const label = node.label || node.id;
+  const drawNode = (node: ForceGraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
+    const label = node.label || String(node.id ?? "");
     const fontSize = Math.max(10 / globalScale, 3);
     const radius = node.type === "document" ? 7 : node.type === "chunk" ? 5 : 6;
 
@@ -144,7 +150,7 @@ export default function GraphPage() {
             <ForceGraph2D
               ref={fgRef}
               graphData={graphData}
-              nodeLabel={(node: GraphNode) => `${node.label || node.id} (${node.type || "node"})`}
+              nodeLabel={(node: ForceGraphNode) => `${node.label || node.id} (${node.type || "node"})`}
               nodeColor={getGraphNodeColor}
               linkColor={getGraphLinkColor}
               linkWidth={1.5}

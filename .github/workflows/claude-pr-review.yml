@@ -1,4 +1,4 @@
-name: Claude PR Review
+name: Automated AI Code Review
 
 on:
   pull_request:
@@ -17,7 +17,7 @@ env:
 
 jobs:
   claude-review:
-    name: Claude Code Review
+    name: Analyze and Review Code Changes
     runs-on: ubuntu-latest
     # Skip draft PRs unless explicitly marked ready
     if: |

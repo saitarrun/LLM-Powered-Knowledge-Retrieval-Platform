@@ -1,4 +1,4 @@
-name: Claude Post-Deploy Smoke Tests
+name: Post-Deployment Health Verification
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   smoke-test:
-    name: Post-Deploy Smoke Test
+    name: Run Deployment Health Checks
     runs-on: ubuntu-latest
     timeout-minutes: 25
 

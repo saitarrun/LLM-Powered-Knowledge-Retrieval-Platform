@@ -86,11 +86,26 @@ export default function ChatPage() {
   const [traces, setTraces] = useState<TraceEvent[]>([]);
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, traces]);
+
+  // Get guest token on mount
+  useEffect(() => {
+    const getGuestToken = async () => {
+      try {
+        const res = await fetch("/nexus-proxy/auth/guest/", { method: "POST" });
+        const data = await res.json();
+        setToken(data.access_token);
+      } catch (error) {
+        console.error("Failed to get guest token:", error);
+      }
+    };
+    getGuestToken();
+  }, []);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -104,10 +119,17 @@ export default function ChatPage() {
 
     try {
       // Real streaming implementation via SSE
-      const url = `${process.env.NEXT_PUBLIC_API_URL || "/nexus-proxy"}/chat/query/stream`;
+      if (!token) {
+        throw new Error("Not authenticated. Please refresh the page.");
+      }
+
+      const url = `${process.env.NEXT_PUBLIC_API_URL || "/nexus-proxy"}/chat/query/stream/`;
       const response = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({ query: userMsg.content, top_k: 5 }),
       });
 

@@ -20,6 +20,27 @@ from app.graph.extractor import graph_extractor
 router = APIRouter(tags=["documents"])
 
 
+@router.get("/documents/status")
+async def get_documents_status(db: Session = Depends(get_db)):
+    """Get knowledge base statistics."""
+    try:
+        total_documents = db.query(Document).count()
+        total_chunks = db.query(DocumentChunk).count()
+
+        return {
+            "documents": total_documents,
+            "indexed_chunks": total_chunks,
+            "average_latency": 0
+        }
+    except Exception as e:
+        logger.error(f"Status endpoint error: {e}")
+        return {
+            "documents": 0,
+            "indexed_chunks": 0,
+            "average_latency": 0
+        }
+
+
 @router.get("/documents/graph")
 async def get_documents_graph():
     """Get knowledge graph topology and sanitized health status."""

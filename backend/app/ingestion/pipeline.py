@@ -8,6 +8,7 @@ from app.services.embedding import embedding_service
 from app.db.models import Document, DocumentChunk
 from app.core.config import settings
 from app.core.logging import logger
+from app.graph.extractor import graph_extractor
 
 
 class IngestionPipeline:
@@ -91,7 +92,15 @@ class IngestionPipeline:
             embeddings = embedding_service.embed(texts)
             logger.info(f"Generated {len(embeddings)} embeddings")
 
-            # 5. Index to FAISS (unless approval required)
+            # 5. Extract knowledge graph (async, non-blocking)
+            try:
+                for db_chunk in db_chunks:
+                    await graph_extractor.extract_and_store(db_chunk.text, doc_id)
+                logger.info(f"Extracted knowledge graph from {filename}")
+            except Exception as e:
+                logger.warning(f"Graph extraction failed for {filename}: {e}")
+
+            # 6. Index to FAISS (unless approval required)
             if not approval_required:
                 chunk_ids = [c.id for c in db_chunks]
                 self.faiss_store.add_embeddings(embeddings, chunk_ids)
@@ -103,7 +112,7 @@ class IngestionPipeline:
                 indexed_at = None
                 logger.info(f"Document {filename} marked for approval (status=pending)")
 
-            # 6. Update document status
+            # 7. Update document status
             doc.status = status
             doc.indexed_at = indexed_at
             db.commit()

@@ -85,6 +85,38 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
     }
 
 
+@router.post("/guest", response_model=TokenResponse)
+async def guest_login(db: Session = Depends(get_db)):
+    """Get a demo guest token for testing (creates or returns existing guest user)."""
+    guest_email = "guest@demo.local"
+    guest_password = "demo-guest-12345"
+
+    # Find or create guest user
+    guest_user = db.query(User).filter(User.email == guest_email).first()
+    if not guest_user:
+        hashed_password = hash_password(guest_password)
+        guest_user = User(
+            email=guest_email,
+            hashed_password=hashed_password,
+            role=UserRole.VIEWER,
+        )
+        db.add(guest_user)
+        db.commit()
+        db.refresh(guest_user)
+
+    # Create access token
+    access_token = create_access_token(
+        data={"email": guest_user.email, "user_id": guest_user.id, "role": guest_user.role.value},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    }
+
+
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(db: Session = Depends(get_db)):
     # This endpoint requires authentication but we'll implement the refresh logic

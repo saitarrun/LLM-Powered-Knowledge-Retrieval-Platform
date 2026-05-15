@@ -6,8 +6,18 @@ from app.core.logging import logger
 
 class LLMProvider:
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        self.model = "gpt-4o-mini"
+        # Use OpenRouter if available, otherwise fall back to OpenAI
+        if settings.OPENAI_API_KEY.startswith("sk-or-"):
+            # OpenRouter API (compatible with OpenAI client)
+            self.client = AsyncOpenAI(
+                api_key=settings.OPENAI_API_KEY,
+                base_url="https://openrouter.ai/api/v1"
+            )
+            self.model = "openai/gpt-4o-mini"
+        else:
+            # Standard OpenAI
+            self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            self.model = "gpt-4o-mini"
         logger.info(f"Initialized LLM provider with model: {self.model}")
 
     async def generate(

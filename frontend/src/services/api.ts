@@ -7,7 +7,8 @@ export const api = {
     try {
       const res = await fetch(`${API_URL}/documents/`);
       if (!res.ok) return [];
-      return res.json();
+      const data = await res.json();
+      return data.documents || [];
     } catch {
       return [];
     }

@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from fastapi import HTTPException
@@ -8,7 +8,7 @@ from app.core.config import settings
 
 async def forward_chat_completion(
     body: dict[str, Any],
-    authorization: Optional[str] = None,
+    authorization: str | None = None,
 ) -> dict[str, Any]:
     url = f"{settings.LLM_BASE_URL.rstrip('/')}/v1/chat/completions"
     headers: dict[str, str] = {}

@@ -29,7 +29,7 @@ app.add_middleware(
 )
 
 # Import and include routers
-from app.api import approval, auth, chat, documents, users  # noqa: E402
+from app.api import approval, auth, chat, documents, openai_compatible, users  # noqa: E402
 from app.api import settings as settings_route  # noqa: E402
 
 app.include_router(auth.router, prefix=settings.API_V1_STR)
@@ -38,6 +38,7 @@ app.include_router(approval.router, prefix=settings.API_V1_STR)
 app.include_router(documents.router, prefix=settings.API_V1_STR)
 app.include_router(chat.router, prefix=settings.API_V1_STR)
 app.include_router(settings_route.router, prefix=settings.API_V1_STR)
+app.include_router(openai_compatible.router, prefix="/v1")
 
 @app.get("/api/health")
 async def health_check():

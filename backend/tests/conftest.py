@@ -45,6 +45,7 @@ def test_db():
     Base.metadata.create_all(bind=engine)
     yield engine
 
+    engine.dispose()
     import os
     os.unlink(db_path)
 

@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     RERANKING_MODEL: str = os.getenv("RERANKING_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openai")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "http://localhost:11434")
     
     # Retrieval Limits
     DEFAULT_TOP_K: int = 5

@@ -11,8 +11,8 @@ class FaissStore:
         self.index_path = index_path
         # Use IndexIDMap to support deletion by ID
         self.index = faiss.IndexIDMap(faiss.IndexFlatIP(dimension))
-        self.metadatas = {}  # Changed to dict: faiss_id -> metadata
-        self.chunk_id_to_faiss_id = {}  # Map chunk IDs to FAISS IDs
+        self.metadatas: dict[int, dict] = {}  # Changed to dict: faiss_id -> metadata
+        self.chunk_id_to_faiss_id: dict[str, int] = {}  # Map chunk IDs to FAISS IDs
         self.next_id = 0
         self.load()
 

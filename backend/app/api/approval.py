@@ -28,7 +28,7 @@ class DocumentPreview(BaseModel):
 
 
 class ApprovalRequest(BaseModel):
-    reason: str = None
+    reason: str | None = None
 
 
 @router.get("/documents/pending", response_model=list[DocumentPreview])
@@ -89,12 +89,12 @@ async def approve_document(
     chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc_id).all()
 
     # Generate embeddings if not already done
-    chunk_embeddings = []
+    chunk_embeddings: list[list[float]] = []
     chunk_ids = []
     for chunk in chunks:
         if chunk.embedding_id:
             # Embedding already exists, skip re-embedding
-            chunk_embeddings.append(None)
+            continue
         else:
             # Generate embedding for this chunk
             embedding = embedding_service.embed_one(chunk.text)

@@ -7,8 +7,8 @@ from rank_bm25 import BM25Okapi
 class BM25Store:
     def __init__(self, index_path: str):
         self.index_path = index_path
-        self.corpus = []
-        self.metadatas = []
+        self.corpus: list[str] = []
+        self.metadatas: list[dict] = []
         self.bm25 = None
         self.load()
 

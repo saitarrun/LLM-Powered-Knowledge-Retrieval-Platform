@@ -26,13 +26,9 @@ class CriticAgent(BaseAgent):
         state["validation"] = {
             "confidence": confidence,
             "note": note,
-            "citation_count": len(citations)
+            "citation_count": len(citations),
         }
 
         logger.info(f"Critic validation: {confidence} - {note}")
 
-        return state, TraceEvent(
-            agent=self.name,
-            action="validate",
-            result=note
-        )
+        return state, TraceEvent(agent=self.name, action="validate", result=note)

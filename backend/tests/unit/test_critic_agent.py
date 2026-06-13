@@ -12,10 +12,8 @@ async def test_critic_agent_high_confidence_with_citations():
         "query": "What is AI?",
         "synthesis_result": {
             "answer": "Artificial Intelligence is...",
-            "citations": [
-                {"chunk_id": "chunk1", "text": "AI definition...", "score": 0.9}
-            ]
-        }
+            "citations": [{"chunk_id": "chunk1", "text": "AI definition...", "score": 0.9}],
+        },
     }
 
     result_state, trace = await agent.execute(state)
@@ -32,10 +30,7 @@ async def test_critic_agent_low_confidence_no_citations():
 
     state = {
         "query": "What is AI?",
-        "synthesis_result": {
-            "answer": "Artificial Intelligence is...",
-            "citations": []
-        }
+        "synthesis_result": {"answer": "Artificial Intelligence is...", "citations": []},
     }
 
     result_state, trace = await agent.execute(state)
@@ -49,13 +44,7 @@ async def test_critic_agent_low_confidence_empty_answer():
     """Test critic agent gives low confidence for empty answers."""
     agent = CriticAgent()
 
-    state = {
-        "query": "What is AI?",
-        "synthesis_result": {
-            "answer": "",
-            "citations": []
-        }
-    }
+    state = {"query": "What is AI?", "synthesis_result": {"answer": "", "citations": []}}
 
     result_state, trace = await agent.execute(state)
 
@@ -70,11 +59,8 @@ async def test_critic_agent_preserves_state():
 
     state = {
         "query": "Test query",
-        "synthesis_result": {
-            "answer": "Test answer",
-            "citations": [{"chunk_id": "chunk1"}]
-        },
-        "validation": {}
+        "synthesis_result": {"answer": "Test answer", "citations": [{"chunk_id": "chunk1"}]},
+        "validation": {},
     }
 
     result_state, trace = await agent.execute(state)

@@ -1,4 +1,5 @@
 """Chat and conversation routes with streaming support."""
+
 import json
 import time
 from collections.abc import AsyncGenerator
@@ -49,7 +50,7 @@ class ChatMessage(BaseModel):
 async def chat(
     request: ChatMessage,
     current_user: TokenData = Depends(require_role(["viewer", "curator", "admin"])),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Send a message and get a response (non-streaming, for backwards compatibility)."""
     try:
@@ -65,7 +66,7 @@ async def chat(
             top_k=request.top_k,
             session_id=request.conversation_id or "default",
             db=db,
-            filters=request.filters.model_dump(exclude_none=True) if request.filters else None
+            filters=request.filters.model_dump(exclude_none=True) if request.filters else None,
         ):
             if event["type"] == "final_state":
                 final_state = event["data"]
@@ -79,14 +80,20 @@ async def chat(
 
         # Serialize traces to JSON
         traces = final_state.get("traces", [])
-        trace_json = json.dumps([
-            {
-                "agent": t.agent if hasattr(t, 'agent') else str(t),
-                "action": t.action if hasattr(t, 'action') else "",
-                "result": t.result if hasattr(t, 'result') else ""
-            }
-            for t in traces
-        ]) if traces else None
+        trace_json = (
+            json.dumps(
+                [
+                    {
+                        "agent": t.agent if hasattr(t, "agent") else str(t),
+                        "action": t.action if hasattr(t, "action") else "",
+                        "result": t.result if hasattr(t, "result") else "",
+                    }
+                    for t in traces
+                ]
+            )
+            if traces
+            else None
+        )
 
         query_log = QueryLog(
             user_id=current_user.user_id,
@@ -95,7 +102,7 @@ async def chat(
             rewritten_query=final_state.get("rewritten_query"),
             answer=answer,
             latency_ms=latency_ms,
-            trace_json=trace_json
+            trace_json=trace_json,
         )
         db.add(query_log)
         db.flush()  # Get query_log.id without committing
@@ -104,9 +111,9 @@ async def chat(
         for trace in traces:
             agent_trace = AgentTrace(
                 query_log_id=query_log.id,
-                agent_name=trace.agent if hasattr(trace, 'agent') else "unknown",
-                action=trace.action if hasattr(trace, 'action') else "",
-                result_summary=trace.result if hasattr(trace, 'result') else ""
+                agent_name=trace.agent if hasattr(trace, "agent") else "unknown",
+                action=trace.action if hasattr(trace, "action") else "",
+                result_summary=trace.result if hasattr(trace, "result") else "",
             )
             db.add(agent_trace)
 
@@ -117,7 +124,7 @@ async def chat(
             "message": request.message,
             "response": answer,
             "citations": citations if isinstance(citations, list) else [],
-            "latency_ms": latency_ms
+            "latency_ms": latency_ms,
         }
 
     except HTTPException:
@@ -131,7 +138,7 @@ async def chat(
 async def chat_query_stream(
     request: ChatRequest,
     current_user: TokenData = Depends(require_role(["viewer", "curator", "admin"])),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Stream orchestrator output as Server-Sent Events (SSE)."""
 
@@ -145,7 +152,7 @@ async def chat_query_stream(
                 top_k=request.top_k,
                 session_id=request.conversation_id or "default",
                 db=db,
-                filters=request.filters.model_dump(exclude_none=True) if request.filters else None
+                filters=request.filters.model_dump(exclude_none=True) if request.filters else None,
             ):
                 if event["type"] == "trace":
                     trace_data = event["data"]
@@ -166,14 +173,20 @@ async def chat_query_stream(
 
             # Serialize traces to JSON
             traces = final_state.get("traces", [])
-            trace_json = json.dumps([
-                {
-                    "agent": t.agent if hasattr(t, 'agent') else str(t),
-                    "action": t.action if hasattr(t, 'action') else "",
-                    "result": t.result if hasattr(t, 'result') else ""
-                }
-                for t in traces
-            ]) if traces else None
+            trace_json = (
+                json.dumps(
+                    [
+                        {
+                            "agent": t.agent if hasattr(t, "agent") else str(t),
+                            "action": t.action if hasattr(t, "action") else "",
+                            "result": t.result if hasattr(t, "result") else "",
+                        }
+                        for t in traces
+                    ]
+                )
+                if traces
+                else None
+            )
 
             query_log = QueryLog(
                 user_id=current_user.user_id,
@@ -182,7 +195,7 @@ async def chat_query_stream(
                 rewritten_query=final_state.get("rewritten_query"),
                 answer=answer,
                 latency_ms=latency_ms,
-                trace_json=trace_json
+                trace_json=trace_json,
             )
             db.add(query_log)
             db.flush()  # Get query_log.id without committing
@@ -191,9 +204,9 @@ async def chat_query_stream(
             for trace in traces:
                 agent_trace = AgentTrace(
                     query_log_id=query_log.id,
-                    agent_name=trace.agent if hasattr(trace, 'agent') else "unknown",
-                    action=trace.action if hasattr(trace, 'action') else "",
-                    result_summary=trace.result if hasattr(trace, 'result') else ""
+                    agent_name=trace.agent if hasattr(trace, "agent") else "unknown",
+                    action=trace.action if hasattr(trace, "action") else "",
+                    result_summary=trace.result if hasattr(trace, "result") else "",
                 )
                 db.add(agent_trace)
 
@@ -210,10 +223,7 @@ async def chat_query_stream(
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no"
-        }
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
@@ -232,15 +242,12 @@ async def list_conversations(db: Session = Depends(get_db)):
                     "id": conv_id,
                     "query_count": 0,
                     "created_at": log.created_at.isoformat(),
-                    "last_query_at": log.created_at.isoformat()
+                    "last_query_at": log.created_at.isoformat(),
                 }
             conversations[conv_id]["query_count"] += 1
             conversations[conv_id]["last_query_at"] = log.created_at.isoformat()
 
-        return {
-            "conversations": list(conversations.values()),
-            "total": len(conversations)
-        }
+        return {"conversations": list(conversations.values()), "total": len(conversations)}
 
     except Exception as e:
         logger.error(f"List conversations error: {e}")
@@ -251,32 +258,35 @@ async def list_conversations(db: Session = Depends(get_db)):
 async def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
     """Get conversation messages and details."""
     try:
-        logs = db.query(QueryLog).filter(
-            QueryLog.conversation_id == conversation_id
-        ).order_by(QueryLog.created_at).all()
+        logs = (
+            db.query(QueryLog)
+            .filter(QueryLog.conversation_id == conversation_id)
+            .order_by(QueryLog.created_at)
+            .all()
+        )
 
         if not logs:
             raise HTTPException(status_code=404, detail="Conversation not found")
 
         messages = []
         for log in logs:
-            messages.append({
-                "role": "user",
-                "content": log.query,
-                "timestamp": log.created_at.isoformat()
-            })
-            messages.append({
-                "role": "assistant",
-                "content": log.answer,
-                "latency_ms": log.latency_ms,
-                "timestamp": log.created_at.isoformat()
-            })
+            messages.append(
+                {"role": "user", "content": log.query, "timestamp": log.created_at.isoformat()}
+            )
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": log.answer,
+                    "latency_ms": log.latency_ms,
+                    "timestamp": log.created_at.isoformat(),
+                }
+            )
 
         return {
             "id": conversation_id,
             "messages": messages,
             "created_at": logs[0].created_at.isoformat() if logs else None,
-            "updated_at": logs[-1].created_at.isoformat() if logs else None
+            "updated_at": logs[-1].created_at.isoformat() if logs else None,
         }
 
     except HTTPException:

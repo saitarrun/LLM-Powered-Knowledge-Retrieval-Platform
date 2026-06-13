@@ -25,6 +25,7 @@ celery_app.conf.update(
     task_time_limit=30 * 60,  # 30 minutes hard limit
 )
 
+
 @celery_app.task(bind=True)
 def debug_task(self):
     """Debug task to verify Celery is working."""

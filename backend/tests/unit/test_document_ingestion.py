@@ -21,11 +21,11 @@ async def test_document_ingestion_success(db_session, mock_embedding_service, mo
 
     pipeline = IngestionPipeline()
 
-    with patch("app.ingestion.pipeline.DocumentParser.parse") as mock_parse, \
-         patch.object(pipeline.chunker, "chunk_document", return_value=MOCK_CHUNKS):
-        mock_parse.return_value = [
-            {"text": "This is a test document. " * 20, "page_number": 1}
-        ]
+    with (
+        patch("app.ingestion.pipeline.DocumentParser.parse") as mock_parse,
+        patch.object(pipeline.chunker, "chunk_document", return_value=MOCK_CHUNKS),
+    ):
+        mock_parse.return_value = [{"text": "This is a test document. " * 20, "page_number": 1}]
         mock_embedding_service.embed.return_value = [[0.1] * 384] * len(MOCK_CHUNKS)
 
         status = await pipeline.ingest(
@@ -33,7 +33,7 @@ async def test_document_ingestion_success(db_session, mock_embedding_service, mo
             filename="test.txt",
             doc_id="doc123",
             db=db_session,
-            approval_required=False
+            approval_required=False,
         )
 
     assert status == "indexed"
@@ -54,11 +54,11 @@ async def test_document_ingestion_approval_required(db_session, mock_embedding_s
 
     pipeline = IngestionPipeline()
 
-    with patch("app.ingestion.pipeline.DocumentParser.parse") as mock_parse, \
-         patch.object(pipeline.chunker, "chunk_document", return_value=MOCK_CHUNKS):
-        mock_parse.return_value = [
-            {"text": "This is a test document. " * 20, "page_number": 1}
-        ]
+    with (
+        patch("app.ingestion.pipeline.DocumentParser.parse") as mock_parse,
+        patch.object(pipeline.chunker, "chunk_document", return_value=MOCK_CHUNKS),
+    ):
+        mock_parse.return_value = [{"text": "This is a test document. " * 20, "page_number": 1}]
         mock_embedding_service.embed.return_value = [[0.1] * 384] * len(MOCK_CHUNKS)
 
         status = await pipeline.ingest(
@@ -66,7 +66,7 @@ async def test_document_ingestion_approval_required(db_session, mock_embedding_s
             filename="test.txt",
             doc_id="doc123",
             db=db_session,
-            approval_required=True
+            approval_required=True,
         )
 
     assert status == "pending"
@@ -87,11 +87,11 @@ async def test_document_ingestion_creates_chunks(db_session, mock_embedding_serv
 
     pipeline = IngestionPipeline()
 
-    with patch("app.ingestion.pipeline.DocumentParser.parse") as mock_parse, \
-         patch.object(pipeline.chunker, "chunk_document", return_value=MOCK_CHUNKS):
-        mock_parse.return_value = [
-            {"text": "This is a test document. " * 20, "page_number": 1}
-        ]
+    with (
+        patch("app.ingestion.pipeline.DocumentParser.parse") as mock_parse,
+        patch.object(pipeline.chunker, "chunk_document", return_value=MOCK_CHUNKS),
+    ):
+        mock_parse.return_value = [{"text": "This is a test document. " * 20, "page_number": 1}]
         mock_embedding_service.embed.return_value = [[0.1] * 384] * len(MOCK_CHUNKS)
 
         await pipeline.ingest(
@@ -99,13 +99,11 @@ async def test_document_ingestion_creates_chunks(db_session, mock_embedding_serv
             filename="test.txt",
             doc_id="doc123",
             db=db_session,
-            approval_required=False
+            approval_required=False,
         )
 
     # Verify chunks were created
-    chunks = db_session.query(DocumentChunk).filter(
-        DocumentChunk.document_id == "doc123"
-    ).all()
+    chunks = db_session.query(DocumentChunk).filter(DocumentChunk.document_id == "doc123").all()
 
     assert len(chunks) > 0
     for chunk in chunks:
@@ -131,7 +129,7 @@ async def test_document_ingestion_failure_sets_status(db_session):
             filename="test.txt",
             doc_id="doc123",
             db=db_session,
-            approval_required=False
+            approval_required=False,
         )
 
     assert status == "failed"

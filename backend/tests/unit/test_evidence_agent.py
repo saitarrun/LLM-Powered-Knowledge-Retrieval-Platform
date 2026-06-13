@@ -7,7 +7,9 @@ from app.agents.evidence import EvidenceAgent
 from app.db.models import Document, DocumentChunk
 
 
-def add_document_with_chunk(db_session, doc_id, chunk_id, filename, status="indexed", created_at=None):
+def add_document_with_chunk(
+    db_session, doc_id, chunk_id, filename, status="indexed", created_at=None
+):
     document = Document(
         id=doc_id,
         filename=filename,

@@ -9,17 +9,24 @@ def make_agent_with_mock_faiss(search_results=None):
     """Create a RetrievalAgent with a mocked FaissStore instance."""
     mock_faiss = MagicMock()
     # Use explicit None check so empty list works correctly
-    mock_faiss.search.return_value = search_results if search_results is not None else [
-        {"score": 0.95, "metadata": {"chunk_id": "chunk1"}},
-        {"score": 0.85, "metadata": {"chunk_id": "chunk2"}},
-    ]
+    mock_faiss.search.return_value = (
+        search_results
+        if search_results is not None
+        else [
+            {"score": 0.95, "metadata": {"chunk_id": "chunk1"}},
+            {"score": 0.85, "metadata": {"chunk_id": "chunk2"}},
+        ]
+    )
     mock_faiss.dimension = 384
 
-    with patch("app.agents.retrieval.FaissStore", return_value=mock_faiss), patch("app.agents.retrieval.embedding_service") as mock_embed:
-            mock_embed.dimension = 384
-            mock_embed.embed_one.return_value = [0.1] * 384
-            agent = RetrievalAgent()
-            agent.faiss_store = mock_faiss
+    with (
+        patch("app.agents.retrieval.FaissStore", return_value=mock_faiss),
+        patch("app.agents.retrieval.embedding_service") as mock_embed,
+    ):
+        mock_embed.dimension = 384
+        mock_embed.embed_one.return_value = [0.1] * 384
+        agent = RetrievalAgent()
+        agent.faiss_store = mock_faiss
 
     return agent, mock_faiss
 
@@ -68,8 +75,7 @@ async def test_retrieval_agent_empty_results():
 async def test_retrieval_agent_top_k():
     """Test retrieval agent respects top_k parameter."""
     results = [
-        {"score": 0.9 - (i * 0.05), "metadata": {"chunk_id": f"chunk{i}"}}
-        for i in range(10)
+        {"score": 0.9 - (i * 0.05), "metadata": {"chunk_id": f"chunk{i}"}} for i in range(10)
     ]
     agent, mock_faiss = make_agent_with_mock_faiss(search_results=results)
 
@@ -121,4 +127,7 @@ async def test_retrieval_agent_applies_quality_filters():
     mock_faiss.search.assert_called_once()
     call_args = mock_faiss.search.call_args
     assert call_args[1].get("top_k") == 20 or (len(call_args[0]) > 1 and call_args[0][1] == 20)
-    assert [c["metadata"]["chunk_id"] for c in result_state["retrieved_candidates"]] == ["chunk1", "chunk3"]
+    assert [c["metadata"]["chunk_id"] for c in result_state["retrieved_candidates"]] == [
+        "chunk1",
+        "chunk3",
+    ]

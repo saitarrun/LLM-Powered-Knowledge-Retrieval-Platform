@@ -86,11 +86,7 @@ async def approve_document(
         )
 
     # Get all chunks for this document
-    chunks = (
-        db.query(DocumentChunk)
-        .filter(DocumentChunk.document_id == doc_id)
-        .all()
-    )
+    chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc_id).all()
 
     # Generate embeddings if not already done
     chunk_embeddings = []

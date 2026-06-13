@@ -25,7 +25,11 @@ class BM25Store:
         tokenized_query = query.lower().split(" ")
         doc_scores = self.bm25.get_scores(tokenized_query)
         top_n = sorted(range(len(doc_scores)), key=lambda i: doc_scores[i], reverse=True)[:top_k]
-        return [{"score": float(doc_scores[i]), "metadata": self.metadatas[i], "text": self.corpus[i]} for i in top_n if doc_scores[i] > 0]
+        return [
+            {"score": float(doc_scores[i]), "metadata": self.metadatas[i], "text": self.corpus[i]}
+            for i in top_n
+            if doc_scores[i] > 0
+        ]
 
     def save(self):
         with open(self.index_path, "wb") as f:

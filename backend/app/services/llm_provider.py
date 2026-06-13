@@ -13,11 +13,7 @@ class LLMProvider:
         logger.info(f"Initialized LLM provider with model: {self.model}")
 
     async def generate(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        temperature: float = 0.7,
-        max_tokens: int = 2000
+        self, system_prompt: str, user_prompt: str, temperature: float = 0.7, max_tokens: int = 2000
     ) -> str:
         """Generate a response from the LLM."""
         try:
@@ -36,11 +32,7 @@ class LLMProvider:
             raise
 
     async def generate_stream(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        temperature: float = 0.7,
-        max_tokens: int = 2000
+        self, system_prompt: str, user_prompt: str, temperature: float = 0.7, max_tokens: int = 2000
     ) -> AsyncGenerator[str, None]:
         """Stream tokens from the LLM."""
         try:

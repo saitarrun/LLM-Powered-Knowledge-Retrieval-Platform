@@ -65,7 +65,9 @@ def test_chat_completions_forwards_to_provider(client, monkeypatch):
 
     mock_http_client.post.assert_called_once()
     call_kwargs = mock_http_client.post.call_args.kwargs
-    assert mock_http_client.post.call_args.args[0] == "http://fake-provider.local/v1/chat/completions"
+    assert (
+        mock_http_client.post.call_args.args[0] == "http://fake-provider.local/v1/chat/completions"
+    )
     assert call_kwargs["json"] == {
         "model": "llama3.2",
         "messages": [{"role": "user", "content": "hello"}],

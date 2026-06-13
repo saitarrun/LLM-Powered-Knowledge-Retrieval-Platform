@@ -6,7 +6,9 @@ import pytest
 from app.agents.synthesis import SynthesisAgent
 
 
-def make_chunk(chunk_id="chunk1", document_id="doc1", filename="source.pdf", text="This is source text."):
+def make_chunk(
+    chunk_id="chunk1", document_id="doc1", filename="source.pdf", text="This is source text."
+):
     document = SimpleNamespace(id=document_id, filename=filename)
     db_chunk = SimpleNamespace(id=chunk_id, document_id=document_id, document=document, text=text)
     return {

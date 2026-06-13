@@ -1,14 +1,16 @@
 import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.core.config import settings
-from app.core.logging import logger
 
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(settings.FAISS_INDEX_PATH) if os.path.dirname(settings.FAISS_INDEX_PATH) else ".", exist_ok=True)
 
-from app.db.database import engine
-from app.db.models import Base
+from app.db.database import engine  # noqa: E402
+from app.db.models import Base  # noqa: E402
+
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -27,7 +29,8 @@ app.add_middleware(
 )
 
 # Import and include routers
-from app.api import documents, chat, settings as settings_route, auth, users, approval
+from app.api import approval, auth, chat, documents, users  # noqa: E402
+from app.api import settings as settings_route  # noqa: E402
 
 app.include_router(auth.router, prefix=settings.API_V1_STR)
 app.include_router(users.router, prefix=settings.API_V1_STR)

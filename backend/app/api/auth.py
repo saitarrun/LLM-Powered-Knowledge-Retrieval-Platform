@@ -1,15 +1,17 @@
 from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
-from app.db.database import get_db
-from app.db.models import User, UserRole
+from sqlalchemy.orm import Session
+
 from app.core.auth import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
     hash_password,
     verify_password,
-    ACCESS_TOKEN_EXPIRE_MINUTES,
 )
+from app.db.database import get_db
+from app.db.models import User, UserRole
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

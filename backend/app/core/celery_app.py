@@ -4,6 +4,7 @@ Configured to use Redis as both broker and backend.
 """
 
 from celery import Celery
+
 from app.core.config import settings
 
 # Initialize Celery app

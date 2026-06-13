@@ -1,7 +1,8 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
+
 from app.agents.retrieval import RetrievalAgent
-from app.schemas.models import TraceEvent
 
 
 def make_agent_with_mock_faiss(search_results=None):
@@ -14,8 +15,7 @@ def make_agent_with_mock_faiss(search_results=None):
     ]
     mock_faiss.dimension = 384
 
-    with patch("app.agents.retrieval.FaissStore", return_value=mock_faiss):
-        with patch("app.agents.retrieval.embedding_service") as mock_embed:
+    with patch("app.agents.retrieval.FaissStore", return_value=mock_faiss), patch("app.agents.retrieval.embedding_service") as mock_embed:
             mock_embed.dimension = 384
             mock_embed.embed_one.return_value = [0.1] * 384
             agent = RetrievalAgent()

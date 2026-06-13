@@ -1,9 +1,10 @@
-import pytest
 import tempfile
-from unittest.mock import patch, MagicMock
-from app.ingestion.pipeline import IngestionPipeline
-from app.db.models import Document, DocumentChunk
+from unittest.mock import patch
 
+import pytest
+
+from app.db.models import Document, DocumentChunk
+from app.ingestion.pipeline import IngestionPipeline
 
 MOCK_CHUNKS = [
     {"text": "This is test chunk 1.", "page_number": 1, "chunk_index": 0},

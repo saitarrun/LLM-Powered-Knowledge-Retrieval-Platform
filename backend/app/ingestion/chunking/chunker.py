@@ -1,5 +1,7 @@
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 from app.core.config import settings
+
 
 class TextChunker:
     def __init__(self, chunk_size: int = settings.CHUNK_SIZE, chunk_overlap: int = settings.CHUNK_OVERLAP):

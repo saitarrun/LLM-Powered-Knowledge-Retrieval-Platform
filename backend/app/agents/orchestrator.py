@@ -1,15 +1,13 @@
-import json
 import asyncio
-from typing import Dict, Any, List
+
+from app.agents.critic import CriticAgent
+from app.agents.evidence import EvidenceAgent
 from app.agents.query_understanding import QueryUnderstandingAgent
 from app.agents.retrieval import RetrievalAgent
-from app.agents.evidence import EvidenceAgent
-from app.agents.synthesis import SynthesisAgent
-from app.agents.critic import CriticAgent
-from app.agents.web_search import WebSearchAgent
 from app.agents.sql_analyst import SQLAnalystAgent
-from app.schemas.models import TraceEvent
-from app.core.logging import logger
+from app.agents.synthesis import SynthesisAgent
+from app.agents.web_search import WebSearchAgent
+
 
 class Orchestrator:
     def __init__(self):
@@ -65,9 +63,7 @@ class Orchestrator:
         # 4. Synthesis (Answer Generation)
         # We wrap synthesis in a generator for streaming
         async for msg in self.synthesis.execute_stream(state):
-            if msg["type"] == "citations":
-                yield msg
-            elif msg["type"] == "token":
+            if msg["type"] == "citations" or msg["type"] == "token":
                 yield msg
             elif msg["type"] == "done":
                 state["synthesis_result"] = msg["data"]

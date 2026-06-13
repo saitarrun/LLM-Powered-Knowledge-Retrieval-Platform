@@ -1,8 +1,8 @@
-import pytest
 import sys
 import tempfile
-import sqlite3
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Mock heavy ML libraries before any imports
 # This prevents ImportError when libraries aren't installed
@@ -27,11 +27,12 @@ sys.modules["langchain_text_splitters"] = MagicMock()
 sys.modules["langchain_text_splitters.RecursiveCharacterTextSplitter"] = MagicMock()
 
 # Now we can safely import app modules
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from app.db.models import Base
-from app.db.database import get_db
-from app.main import app
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+
+from app.db.database import get_db  # noqa: E402
+from app.db.models import Base  # noqa: E402
+from app.main import app  # noqa: E402
 
 
 @pytest.fixture(scope="session")

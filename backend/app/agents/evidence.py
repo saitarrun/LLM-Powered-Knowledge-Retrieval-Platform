@@ -1,11 +1,13 @@
-from typing import Dict, Any, Tuple
+from typing import Any
+
 from sentence_transformers import CrossEncoder
+
 from app.agents.base import BaseAgent
-from app.schemas.models import TraceEvent
 from app.core.config import settings
 from app.core.logging import logger
-from sqlalchemy.orm import Session
 from app.db.models import Document, DocumentChunk
+from app.schemas.models import TraceEvent
+
 
 class EvidenceAgent(BaseAgent):
     name = "evidence"
@@ -14,7 +16,7 @@ class EvidenceAgent(BaseAgent):
         logger.info(f"Loading CrossEncoder: {settings.RERANKING_MODEL}")
         self.reranker = CrossEncoder(settings.RERANKING_MODEL)
 
-    async def execute(self, state: Dict[str, Any]) -> Tuple[Dict[str, Any], TraceEvent]:
+    async def execute(self, state: dict[str, Any]) -> tuple[dict[str, Any], TraceEvent]:
         query = state.get("rewritten_query", state.get("query", ""))
         candidates = state.get("retrieved_candidates", [])
         config = state.get("config", {})

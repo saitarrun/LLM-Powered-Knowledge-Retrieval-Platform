@@ -1,12 +1,15 @@
-import uuid
 import datetime
-from enum import Enum
-from sqlalchemy import Column, String, Text, Integer, DateTime, ForeignKey, Boolean, Enum as SQLEnum
+import uuid
+from enum import StrEnum
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import relationship
+
 from app.db.database import Base
 
 
-class UserRole(str, Enum):
+class UserRole(StrEnum):
     VIEWER = "viewer"
     CURATOR = "curator"
     ADMIN = "admin"

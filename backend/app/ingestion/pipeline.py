@@ -1,13 +1,14 @@
-import os
 from datetime import datetime
+
 from sqlalchemy.orm import Session
-from app.ingestion.loaders.parser import DocumentParser
-from app.ingestion.chunking.chunker import TextChunker
-from app.vectorstore.faiss_store import FaissStore
-from app.services.embedding import embedding_service
-from app.db.models import Document, DocumentChunk
+
 from app.core.config import settings
 from app.core.logging import logger
+from app.db.models import Document, DocumentChunk
+from app.ingestion.chunking.chunker import TextChunker
+from app.ingestion.loaders.parser import DocumentParser
+from app.services.embedding import embedding_service
+from app.vectorstore.faiss_store import FaissStore
 
 
 class IngestionPipeline:

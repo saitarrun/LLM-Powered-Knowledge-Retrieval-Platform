@@ -1,7 +1,6 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 from app.core.config import settings
@@ -18,7 +17,8 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-from app.db.models import Base
+from app.db.models import Base  # noqa: E402
+
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,

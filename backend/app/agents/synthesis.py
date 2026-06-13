@@ -1,9 +1,9 @@
-import asyncio
-from typing import Dict, Any, Tuple, List, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
+
 from app.agents.base import BaseAgent
-from app.schemas.models import TraceEvent, Citation
+from app.schemas.models import Citation, TraceEvent
 from app.services.llm_provider import llm
-from app.core.logging import logger
 
 SYSTEM_PROMPT = "You are a synthesis agent. Use the provided evidence to answer the question concisely and accurately."
 
@@ -17,7 +17,7 @@ def _snippet(text: str, max_length: int = 300) -> str:
     return f"{normalized[:max_length - 3].rstrip()}..."
 
 
-def _chunk_id(chunk: Dict[str, Any]) -> str | None:
+def _chunk_id(chunk: dict[str, Any]) -> str | None:
     db_chunk = chunk.get("db_chunk")
     if db_chunk is not None and getattr(db_chunk, "id", None):
         return db_chunk.id
@@ -25,7 +25,7 @@ def _chunk_id(chunk: Dict[str, Any]) -> str | None:
     return metadata.get("chunk_id") or metadata.get("id")
 
 
-def _citation_from_chunk(chunk: Dict[str, Any]) -> Citation:
+def _citation_from_chunk(chunk: dict[str, Any]) -> Citation:
     db_chunk = chunk.get("db_chunk")
     text = chunk.get("text") or getattr(db_chunk, "text", "") or ""
     chunk_id = _chunk_id(chunk)
@@ -54,13 +54,13 @@ def _citation_from_chunk(chunk: Dict[str, Any]) -> Citation:
     )
 
 
-def _evidence_id(chunk: Dict[str, Any], index: int) -> str:
+def _evidence_id(chunk: dict[str, Any], index: int) -> str:
     return _chunk_id(chunk) or f"source-{index + 1}"
 
 class SynthesisAgent(BaseAgent):
     name = "synthesis"
 
-    async def execute(self, state: Dict[str, Any]) -> Tuple[Dict[str, Any], TraceEvent]:
+    async def execute(self, state: dict[str, Any]) -> tuple[dict[str, Any], TraceEvent]:
         query = state.get("query", "")
         chunks = state.get("reranked_chunks", [])
 
@@ -80,7 +80,7 @@ class SynthesisAgent(BaseAgent):
         state["synthesis_result"] = {"answer": response_text, "citations": citations}
         return state, TraceEvent(agent=self.name, action="synthesize", result="Generated answer.")
 
-    async def execute_stream(self, state: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
+    async def execute_stream(self, state: dict[str, Any]) -> AsyncGenerator[dict[str, Any], None]:
         """Stream tokens from synthesis, yielding token, citations, and done events."""
         query = state.get("query", "")
         chunks = state.get("reranked_chunks", [])

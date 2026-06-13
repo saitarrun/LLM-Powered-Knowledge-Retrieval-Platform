@@ -1,3 +1,4 @@
+import React from "react";
 import type { Metadata } from "next";
 import { Inter, Newsreader, Manrope } from "next/font/google";
 import "./globals.css";
@@ -88,7 +89,7 @@ export default function RootLayout({
   );
 }
 
-function NavItem({ href, icon: Icon, label }: { href: string, icon: any, label: string }) {
+function NavItem({ href, icon: Icon, label }: { href: string, icon: React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>, label: string }) {
   return (
     <Link href={href} className="flex items-center gap-5 px-6 py-5 rounded-[2rem] hover:bg-surface-container transition-all group">
       <div className="w-10 h-10 flex items-center justify-center rounded-2xl group-hover:bg-primary transition-colors duration-700">

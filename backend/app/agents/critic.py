@@ -1,13 +1,14 @@
-from typing import Dict, Any, Tuple
+from typing import Any
+
 from app.agents.base import BaseAgent
-from app.schemas.models import TraceEvent
 from app.core.logging import logger
+from app.schemas.models import TraceEvent
 
 
 class CriticAgent(BaseAgent):
     name = "critic"
 
-    async def execute(self, state: Dict[str, Any]) -> Tuple[Dict[str, Any], TraceEvent]:
+    async def execute(self, state: dict[str, Any]) -> tuple[dict[str, Any], TraceEvent]:
         synthesis = state.get("synthesis_result", {})
         citations = synthesis.get("citations", [])
         answer = synthesis.get("answer", "")

@@ -1,47 +1,48 @@
 """Chat and conversation routes with streaming support."""
 import json
 import time
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Optional, AsyncGenerator
-from fastapi import APIRouter, HTTPException, Depends
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.db.database import get_db
-from app.db.models import QueryLog, AgentTrace
 from app.agents import orchestrator as orchestrator_module
 from app.core.logging import logger
-from app.core.permissions import require_role, TokenData
+from app.core.permissions import TokenData, require_role
+from app.db.database import get_db
+from app.db.models import AgentTrace, QueryLog
 
 router = APIRouter(tags=["chat"])
 
 
 class RetrievalFilters(BaseModel):
-    document_ids: Optional[list[str]] = None
-    filename_contains: Optional[str] = None
-    status: Optional[str] = None
-    approval_required: Optional[bool] = None
-    approved_by: Optional[str] = None
-    created_after: Optional[datetime] = None
-    created_before: Optional[datetime] = None
-    min_vector_score: Optional[float] = None
-    min_rerank_score: Optional[float] = None
-    overfetch_multiplier: Optional[int] = None
+    document_ids: list[str] | None = None
+    filename_contains: str | None = None
+    status: str | None = None
+    approval_required: bool | None = None
+    approved_by: str | None = None
+    created_after: datetime | None = None
+    created_before: datetime | None = None
+    min_vector_score: float | None = None
+    min_rerank_score: float | None = None
+    overfetch_multiplier: int | None = None
 
 
 class ChatRequest(BaseModel):
     query: str
-    conversation_id: Optional[str] = None
+    conversation_id: str | None = None
     top_k: int = 5
-    filters: Optional[RetrievalFilters] = None
+    filters: RetrievalFilters | None = None
 
 
 class ChatMessage(BaseModel):
     message: str
-    conversation_id: Optional[str] = None
+    conversation_id: str | None = None
     top_k: int = 5
-    filters: Optional[RetrievalFilters] = None
+    filters: RetrievalFilters | None = None
 
 
 @router.post("/chat")
@@ -123,7 +124,7 @@ async def chat(
         raise
     except Exception as e:
         logger.error(f"Chat error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/chat/query/stream")
@@ -243,7 +244,7 @@ async def list_conversations(db: Session = Depends(get_db)):
 
     except Exception as e:
         logger.error(f"List conversations error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/conversations/{conversation_id}")
@@ -282,4 +283,4 @@ async def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"Get conversation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

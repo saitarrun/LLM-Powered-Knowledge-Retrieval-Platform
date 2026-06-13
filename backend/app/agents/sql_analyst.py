@@ -1,15 +1,18 @@
-from typing import Dict, Any, Tuple
+from typing import Any
+
+from sqlalchemy import text
+
 from app.agents.base import BaseAgent
+from app.core.logging import logger
+from app.db.database import engine
 from app.schemas.models import TraceEvent
 from app.services.llm_provider import llm
-from app.db.database import engine
-from sqlalchemy import text
-from app.core.logging import logger
+
 
 class SQLAnalystAgent(BaseAgent):
     name = "sql_analyst"
 
-    async def execute(self, state: Dict[str, Any]) -> Tuple[Dict[str, Any], TraceEvent]:
+    async def execute(self, state: dict[str, Any]) -> tuple[dict[str, Any], TraceEvent]:
         query = state.get("rewritten_query", state.get("query", ""))
         logger.info(f"SQL Analyst Agent translating query: {query}")
         

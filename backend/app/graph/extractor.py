@@ -1,9 +1,10 @@
-import os
 import json
+import os
+
 from neo4j import AsyncGraphDatabase
-from app.services.llm_provider import llm
-from app.core.config import settings
+
 from app.core.logging import logger
+from app.services.llm_provider import llm
 
 neo4j_uri = os.getenv("NEO4J_URI", "bolt://neo4j:7687")
 neo4j_user = os.getenv("NEO4J_USER", "neo4j")
@@ -14,7 +15,8 @@ class GraphExtractor:
         self.driver = AsyncGraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
 
     async def extract_and_store(self, text: str, source_id: str):
-        if not llm.client: return # Skip if no API key
+        if not llm.client:
+            return  # Skip if no API key
         prompt = f"""
         Extract knowledge graph triples from the text. 
         Return ONLY a JSON list of dictionaries with keys "head", "type", "tail".
@@ -40,7 +42,8 @@ class GraphExtractor:
                 tail = t.get("tail")
                 if head and rel and tail:
                     rel_type = "".join(e for e in rel.upper().replace(" ", "_").replace("-", "_") if e.isalnum() or e == "_")
-                    if not rel_type: rel_type = "RELATED_TO"
+                    if not rel_type:
+                        rel_type = "RELATED_TO"
                     query = f'''
                     MERGE (h:Entity {{id: $head}})
                     MERGE (t:Entity {{id: $tail}})
@@ -53,7 +56,8 @@ class GraphExtractor:
                         logger.warning(f"Neo4j merge error: {e}")
         
     async def query_graph(self, query: str):
-        if not llm.client: return []
+        if not llm.client:
+            return []
         prompt = f"Extract the main subject entity from this query: '{query}'. Return ONLY the entity string, nothing else."
         entity = await llm.generate("You extract single noun subjects from queries.", prompt)
         entity = entity.strip().strip("'").strip('"')

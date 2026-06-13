@@ -1,21 +1,19 @@
 """Document ingestion and management routes."""
 import os
-import shutil
-from datetime import datetime
-from typing import Optional
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
 
-from app.db.database import get_db
-from app.db.models import Document, DocumentChunk, AuditLog
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
 from app.core.config import settings
 from app.core.logging import logger
-from app.core.permissions import require_role, TokenData
-from app.ingestion.pipeline import pipeline
-from app.vectorstore.faiss_store import FaissStore
-from app.services.embedding import embedding_service
+from app.core.permissions import TokenData, require_role
+from app.db.database import get_db
+from app.db.models import AuditLog, Document, DocumentChunk
 from app.graph.extractor import graph_extractor
+from app.ingestion.pipeline import pipeline
+from app.services.embedding import embedding_service
+from app.vectorstore.faiss_store import FaissStore
 
 router = APIRouter(tags=["documents"])
 
@@ -50,9 +48,9 @@ class DocumentResponse(BaseModel):
     filename: str
     status: str
     chunk_count: int
-    indexed_at: Optional[str]
+    indexed_at: str | None
     approval_required: bool
-    approved_by: Optional[str]
+    approved_by: str | None
 
     class Config:
         from_attributes = True
@@ -112,7 +110,7 @@ async def upload_document(
         raise
     except Exception as e:
         logger.error(f"Upload error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/documents")
@@ -144,7 +142,7 @@ async def list_documents(db: Session = Depends(get_db)):
 
     except Exception as e:
         logger.error(f"List documents error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/documents/{doc_id}")
@@ -175,7 +173,7 @@ async def get_document(doc_id: str, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"Get document error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/documents/{doc_id}/chunks/{chunk_id}")
@@ -227,7 +225,7 @@ async def get_document_chunk_context(doc_id: str, chunk_id: str, db: Session = D
         raise
     except Exception as e:
         logger.error(f"Get document chunk context error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/documents/{doc_id}")
@@ -294,4 +292,4 @@ async def delete_document(
         raise
     except Exception as e:
         logger.error(f"Delete document error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

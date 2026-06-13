@@ -1,13 +1,22 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Database, Shield, RefreshCw, Layers, LayoutGrid, Search, Network } from "lucide-react";
+import React, { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
+import { Database, Shield, RefreshCw, Layers, LayoutGrid, Network } from "lucide-react";
 import { api } from "@/services/api";
 
+interface Document {
+  id: string;
+  filename: string;
+  status: string;
+  [key: string]: unknown;
+}
+
+type Analytics = Record<string, unknown> | null;
+
 export default function DocumentsPage() {
-  const [docs, setDocs] = useState<any[]>([]);
-  const [analytics, setAnalytics] = useState<any>(null);
+  const [docs, setDocs] = useState<Document[]>([]);
+  const [analytics, setAnalytics] = useState<Analytics>(null);
   const [loading, setLoading] = useState(true);
   const [isCalibrating, setIsCalibrating] = useState(false);
 
@@ -19,7 +28,8 @@ export default function DocumentsPage() {
   }, []);
 
   useEffect(() => {
-    loadData();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadData();
     const interval = setInterval(loadData, 5000);
     return () => clearInterval(interval);
   }, [loadData]);
@@ -167,7 +177,15 @@ export default function DocumentsPage() {
   );
 }
 
-function StatCard({ label, value, metric, icon: Icon, accent }: any) {
+interface StatCardProps {
+  label: string;
+  value: string | number;
+  metric: string;
+  icon: React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
+  accent?: string;
+}
+
+function StatCard({ label, value, metric, icon: Icon, accent }: StatCardProps) {
   return (
     <div className="p-10 transition-all duration-700 bg-surface shadow-[0_4px_20px_rgba(18,18,18,0.04),_0_20px_50px_rgba(18,18,18,0.08)] flex flex-col gap-8 border-t border-secondary/20 hover:-translate-y-2 overflow-hidden">
        <div className="flex justify-between items-start">

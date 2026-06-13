@@ -1,12 +1,12 @@
-import pytest
-import tempfile
 import io
 from unittest.mock import patch
+
+import pytest
 from fastapi.testclient import TestClient
-from app.main import app
+
+from app.core.auth import create_access_token, hash_password
 from app.db.models import Document, DocumentChunk, User, UserRole
-from app.core.auth import hash_password, create_access_token
-from app.db.database import SessionLocal
+from app.main import app
 
 
 @pytest.fixture

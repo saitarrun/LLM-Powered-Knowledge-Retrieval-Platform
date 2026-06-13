@@ -1,11 +1,11 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-import json
-from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
+
+from app.core.auth import create_access_token, hash_password
+from app.db.models import QueryLog, User, UserRole
 from app.main import app
-from app.db.models import User, UserRole, QueryLog, AgentTrace
-from app.core.auth import hash_password, create_access_token
-from app.db.database import SessionLocal
 
 
 @pytest.fixture
@@ -143,7 +143,7 @@ async def test_query_log_created(client, user_token, db_session):
 
         mock_orchestrator.run = mock_run
 
-        response = client.post(
+        client.post(
             "/api/v1/chat",
             json={"message": "Test query"},
             headers={"Authorization": f"Bearer {user_token}"}

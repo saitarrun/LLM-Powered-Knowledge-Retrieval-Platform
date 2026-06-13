@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { motion } from "framer-motion";
 import {
   Cpu,
@@ -141,7 +142,7 @@ export default function Home() {
   );
 }
 
-function OrbitalSensor({ icon: Icon, label, position }: any) {
+function OrbitalSensor({ icon: Icon, label, position }: { icon: React.ComponentType<{ size?: number; className?: string }>; label: string; position: string }) {
   return (
     <div className={`absolute ${position} group-hover:scale-110 transition-transform duration-700 pointer-events-none`}>
        <div className="p-4 bg-surface shadow-premium border border-on-surface/5 rounded-2xl flex items-center gap-3">
@@ -152,7 +153,7 @@ function OrbitalSensor({ icon: Icon, label, position }: any) {
   );
 }
 
-function StatModule({ label, value, metric }: any) {
+function StatModule({ label, value, metric }: { label: string; value: string | number; metric: string }) {
   return (
     <div className="bg-primary p-12 flex flex-col gap-6 group hover:bg-neutral-900 transition-colors">
        <span className="label-sm opacity-40 tracking-[0.4em] font-black group-hover:text-secondary transition-colors">{label}</span>
@@ -164,7 +165,7 @@ function StatModule({ label, value, metric }: any) {
   );
 }
 
-function FeatureCard({ icon: Icon, title, desc }: any) {
+function FeatureCard({ icon: Icon, title, desc }: { icon: React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>; title: string; desc: string }) {
   return (
     <div className="p-12 bg-surface shadow-[0_4px_30px_rgba(18,18,18,0.03)] border-t-2 border-primary-container group hover:-translate-y-4 transition-all duration-700 min-h-[360px] flex flex-col justify-between">
        <div className="space-y-8">

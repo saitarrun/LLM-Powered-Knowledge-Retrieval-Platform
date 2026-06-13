@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional, List
+
+from pydantic import BaseModel, Field
 
 
 class TraceEvent(BaseModel):
@@ -11,10 +11,10 @@ class TraceEvent(BaseModel):
 
 
 class Citation(BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     document_name: str = "Source unavailable"
     chunk_text: str = ""
-    chunk_id: Optional[str] = None
-    document_id: Optional[str] = None
+    chunk_id: str | None = None
+    document_id: str | None = None
     snippet: str = ""
     available: bool = False

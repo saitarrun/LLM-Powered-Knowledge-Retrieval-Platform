@@ -1,11 +1,12 @@
 "use client";
 
+import React from "react";
 import { motion } from "framer-motion";
-import { Settings, Cpu, Shield, Layers, Save } from "lucide-react";
+import { Settings } from "lucide-react";
 import { useState, useEffect } from "react";
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<any>({});
+  const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -17,7 +18,7 @@ export default function SettingsPage() {
       });
   }, []);
 
-  const handleUpdate = async (e: any) => {
+  const handleUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     await fetch("/nexus-proxy/settings", {
       method: "POST",

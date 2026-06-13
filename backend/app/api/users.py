@@ -1,11 +1,12 @@
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
-from typing import List
+from sqlalchemy.orm import Session
+
+from app.core.auth import TokenData, hash_password
+from app.core.permissions import require_role
 from app.db.database import get_db
 from app.db.models import User, UserRole
-from app.core.auth import hash_password, TokenData
-from app.core.permissions import require_role
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -31,7 +32,7 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
-@router.get("", response_model=List[UserResponse], dependencies=[Depends(require_role(["admin"]))])
+@router.get("", response_model=list[UserResponse], dependencies=[Depends(require_role(["admin"]))])
 async def list_users(db: Session = Depends(get_db)):
     users = db.query(User).all()
     return users
@@ -54,7 +55,7 @@ async def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid role. Must be 'viewer', 'curator', or 'admin'",
-        )
+        ) from None
 
     # Create new user
     hashed_password = hash_password(user_data.password)
@@ -98,7 +99,7 @@ async def update_user(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid role",
-            )
+            ) from None
 
     if user_update.password:
         user.hashed_password = hash_password(user_update.password)

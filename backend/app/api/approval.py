@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
 from datetime import datetime
-from typing import List
-from app.db.database import get_db
-from app.db.models import Document, DocumentChunk, AuditLog, UserRole
-from app.core.permissions import require_role, TokenData
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
 from app.core.config import settings
+from app.core.permissions import TokenData, require_role
+from app.db.database import get_db
+from app.db.models import AuditLog, Document, DocumentChunk
 from app.services.embedding import embedding_service
 from app.vectorstore.faiss_store import FaissStore
 
@@ -30,7 +31,7 @@ class ApprovalRequest(BaseModel):
     reason: str = None
 
 
-@router.get("/documents/pending", response_model=List[DocumentPreview])
+@router.get("/documents/pending", response_model=list[DocumentPreview])
 async def list_pending_documents(
     current_user: TokenData = Depends(require_role(["curator", "admin"])),
     db: Session = Depends(get_db),

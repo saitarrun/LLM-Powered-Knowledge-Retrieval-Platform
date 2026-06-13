@@ -1,6 +1,8 @@
 import os
-import fitz
+
 import docx
+import fitz
+
 
 class DocumentParser:
     @staticmethod

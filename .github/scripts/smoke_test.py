@@ -6,7 +6,13 @@ is running correctly. Results are sent to Claude for analysis and
 a report is posted back to GitHub.
 """
 
-import os, sys, json, time, httpx, subprocess, traceback
+import os
+import sys
+import json
+import time
+import httpx
+import subprocess
+import traceback
 
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 GITHUB_TOKEN       = os.environ["GITHUB_TOKEN"]
@@ -165,7 +171,7 @@ def wait_for_frontend(max_wait=120):
         try:
             r = httpx.get(FRONTEND_URL, timeout=5)
             if r.status_code == 200:
-                print(f"✅ Frontend ready")
+                print("✅ Frontend ready")
                 return True
         except Exception:
             pass

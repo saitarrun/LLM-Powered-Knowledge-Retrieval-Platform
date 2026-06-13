@@ -1,5 +1,7 @@
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+
 from openai import AsyncOpenAI
+
 from app.core.config import settings
 from app.core.logging import logger
 

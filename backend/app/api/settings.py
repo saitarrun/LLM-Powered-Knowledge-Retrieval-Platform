@@ -1,5 +1,6 @@
 """Settings and configuration routes."""
 from fastapi import APIRouter
+
 from app.core.config import settings
 
 router = APIRouter(tags=["settings"])

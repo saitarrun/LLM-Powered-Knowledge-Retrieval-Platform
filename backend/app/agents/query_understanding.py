@@ -1,9 +1,10 @@
 import json
-from typing import Dict, Any, Tuple
+from typing import Any
+
 from app.agents.base import BaseAgent
+from app.core.logging import logger
 from app.schemas.models import TraceEvent
 from app.services.llm_provider import llm
-from app.core.logging import logger
 
 SYSTEM_PROMPT = """You are a Query Understanding Agent. 
 Analyze the user query and decide the best routing strategy.
@@ -20,7 +21,7 @@ Return ONLY VALID JSON. Do not include markdown blocks.
 class QueryUnderstandingAgent(BaseAgent):
     name = "query_understanding"
 
-    async def execute(self, state: Dict[str, Any]) -> Tuple[Dict[str, Any], TraceEvent]:
+    async def execute(self, state: dict[str, Any]) -> tuple[dict[str, Any], TraceEvent]:
         original_query = state.get("query", "")
         logger.info(f"Query Understanding: {original_query}")
         

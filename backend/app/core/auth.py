@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
-from typing import Optional
-from passlib.context import CryptContext
+
 from jose import JWTError, jwt
+from passlib.context import CryptContext
 from pydantic import BaseModel
 
 SECRET_KEY = "your-secret-key-change-this-in-production"
@@ -17,7 +17,7 @@ class TokenData(BaseModel):
     role: str
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -28,7 +28,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
-def verify_token(token: str) -> Optional[TokenData]:
+def verify_token(token: str) -> TokenData | None:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("email")

@@ -1,7 +1,9 @@
-import numpy as np
-import faiss
 import os
 import pickle
+
+import faiss
+import numpy as np
+
 
 class FaissStore:
     def __init__(self, dimension: int, index_path: str):

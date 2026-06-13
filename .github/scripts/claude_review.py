@@ -4,7 +4,9 @@ Claude PR Reviewer (OpenRouter) — full autonomous review, conflict detection,
 codebase integration checks, and auto-merge on clean approval.
 """
 
-import os, sys, json, httpx
+import os
+import sys
+import httpx
 
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 GITHUB_TOKEN       = os.environ["GITHUB_TOKEN"]

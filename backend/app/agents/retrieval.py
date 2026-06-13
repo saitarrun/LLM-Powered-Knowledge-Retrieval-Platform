@@ -1,10 +1,11 @@
-from typing import Dict, Any, Tuple
+from typing import Any
+
 from app.agents.base import BaseAgent
+from app.core.config import settings
+from app.core.logging import logger
 from app.schemas.models import TraceEvent
 from app.services.embedding import embedding_service
 from app.vectorstore.faiss_store import FaissStore
-from app.core.config import settings
-from app.core.logging import logger
 
 
 class RetrievalAgent(BaseAgent):
@@ -16,7 +17,7 @@ class RetrievalAgent(BaseAgent):
             index_path=settings.FAISS_INDEX_PATH
         )
 
-    async def execute(self, state: Dict[str, Any]) -> Tuple[Dict[str, Any], TraceEvent]:
+    async def execute(self, state: dict[str, Any]) -> tuple[dict[str, Any], TraceEvent]:
         query = state.get("rewritten_query", state.get("query", ""))
         config = state.get("config", {})
         top_k = config.get("top_k", 5)

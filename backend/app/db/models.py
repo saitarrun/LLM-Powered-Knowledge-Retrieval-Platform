@@ -14,8 +14,10 @@ class UserRole(StrEnum):
     CURATOR = "curator"
     ADMIN = "admin"
 
+
 def generate_uuid():
     return str(uuid.uuid4())
+
 
 class Document(Base):
     __tablename__ = "documents"
@@ -24,7 +26,7 @@ class Document(Base):
     filename = Column(String, index=True)
     content_type = Column(String)
     file_path = Column(String)
-    status = Column(String, default="processing") # processing, indexed, failed, pending, rejected
+    status = Column(String, default="processing")  # processing, indexed, failed, pending, rejected
     approval_required = Column(Boolean, default=False)
     approved_by = Column(String, nullable=True)
     approved_at = Column(DateTime, nullable=True)
@@ -32,6 +34,7 @@ class Document(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
+
 
 class DocumentChunk(Base):
     __tablename__ = "document_chunks"
@@ -47,6 +50,7 @@ class DocumentChunk(Base):
 
     document = relationship("Document", back_populates="chunks")
 
+
 class QueryLog(Base):
     __tablename__ = "query_logs"
 
@@ -59,8 +63,9 @@ class QueryLog(Base):
     latency_ms = Column(Integer, default=0)
     token_count = Column(Integer, default=0)
     trace_json = Column(Text, nullable=True)
-    feedback = Column(Integer, nullable=True) # 0=Down, 1=Up
+    feedback = Column(Integer, nullable=True)  # 0=Down, 1=Up
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
 
 class AgentTrace(Base):
     __tablename__ = "agent_traces"

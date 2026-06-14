@@ -20,17 +20,13 @@ def curator_token(db_session):
     user = User(
         email="curator@test.com",
         hashed_password=hash_password("password123"),
-        role=UserRole.CURATOR
+        role=UserRole.CURATOR,
     )
     db_session.add(user)
     db_session.commit()
     db_session.refresh(user)
 
-    token = create_access_token({
-        "email": user.email,
-        "user_id": user.id,
-        "role": user.role.value
-    })
+    token = create_access_token({"email": user.email, "user_id": user.id, "role": user.role.value})
 
     return token
 
@@ -38,8 +34,7 @@ def curator_token(db_session):
 def test_upload_document_unauthorized(client):
     """Test upload without authentication returns 401."""
     response = client.post(
-        "/api/v1/documents/upload",
-        files={"file": ("test.txt", io.BytesIO(b"test content"))}
+        "/api/v1/documents/upload", files={"file": ("test.txt", io.BytesIO(b"test content"))}
     )
 
     assert response.status_code == 403
@@ -48,24 +43,18 @@ def test_upload_document_unauthorized(client):
 def test_upload_document_viewer_forbidden(client, db_session):
     """Test upload with viewer role returns 403."""
     user = User(
-        email="viewer@test.com",
-        hashed_password=hash_password("password123"),
-        role=UserRole.VIEWER
+        email="viewer@test.com", hashed_password=hash_password("password123"), role=UserRole.VIEWER
     )
     db_session.add(user)
     db_session.commit()
     db_session.refresh(user)
 
-    token = create_access_token({
-        "email": user.email,
-        "user_id": user.id,
-        "role": user.role.value
-    })
+    token = create_access_token({"email": user.email, "user_id": user.id, "role": user.role.value})
 
     response = client.post(
         "/api/v1/documents/upload",
         files={"file": ("test.txt", io.BytesIO(b"test content"))},
-        headers={"Authorization": f"Bearer {token}"}
+        headers={"Authorization": f"Bearer {token}"},
     )
 
     assert response.status_code == 403
@@ -77,14 +66,12 @@ async def test_upload_document_success(client, curator_token):
     file_content = b"This is a test document. " * 20
 
     with patch("app.ingestion.pipeline.DocumentParser.parse") as mock_parse:
-        mock_parse.return_value = [
-            {"text": "This is a test document. " * 20, "page_number": 1}
-        ]
+        mock_parse.return_value = [{"text": "This is a test document. " * 20, "page_number": 1}]
 
         response = client.post(
             "/api/v1/documents/upload",
             files={"file": ("test.txt", io.BytesIO(file_content))},
-            headers={"Authorization": f"Bearer {curator_token}"}
+            headers={"Authorization": f"Bearer {curator_token}"},
         )
 
     assert response.status_code == 200
@@ -168,8 +155,7 @@ async def test_delete_document_success(client, curator_token, db_session):
 
     with patch("app.vectorstore.faiss_store.FaissStore"):
         response = client.delete(
-            "/api/v1/documents/doc123",
-            headers={"Authorization": f"Bearer {curator_token}"}
+            "/api/v1/documents/doc123", headers={"Authorization": f"Bearer {curator_token}"}
         )
 
     assert response.status_code == 200

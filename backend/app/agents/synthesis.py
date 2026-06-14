@@ -14,7 +14,7 @@ def _snippet(text: str, max_length: int = 300) -> str:
     normalized = " ".join(text.split())
     if len(normalized) <= max_length:
         return normalized
-    return f"{normalized[:max_length - 3].rstrip()}..."
+    return f"{normalized[: max_length - 3].rstrip()}..."
 
 
 def _chunk_id(chunk: dict[str, Any]) -> str | None:
@@ -41,7 +41,9 @@ def _citation_from_chunk(chunk: dict[str, Any]) -> Citation:
 
     document = getattr(db_chunk, "document", None)
     document_id = getattr(db_chunk, "document_id", None) or getattr(document, "id", None)
-    document_name = getattr(document, "filename", None) or (chunk.get("metadata") or {}).get("document_name")
+    document_name = getattr(document, "filename", None) or (chunk.get("metadata") or {}).get(
+        "document_name"
+    )
 
     return Citation(
         id=chunk_id,
@@ -57,6 +59,7 @@ def _citation_from_chunk(chunk: dict[str, Any]) -> Citation:
 def _evidence_id(chunk: dict[str, Any], index: int) -> str:
     return _chunk_id(chunk) or f"source-{index + 1}"
 
+
 class SynthesisAgent(BaseAgent):
     name = "synthesis"
 
@@ -66,12 +69,13 @@ class SynthesisAgent(BaseAgent):
 
         if not chunks:
             state["synthesis_result"] = {"answer": "", "citations": []}
-            return state, TraceEvent(agent=self.name, action="synthesize", result="No chunks to synthesize.")
+            return state, TraceEvent(
+                agent=self.name, action="synthesize", result="No chunks to synthesize."
+            )
 
-        evidence_text = "\n".join([
-            f"[ID: {_evidence_id(c, i)}]\nText: {c.get('text', '')}"
-            for i, c in enumerate(chunks)
-        ])
+        evidence_text = "\n".join(
+            [f"[ID: {_evidence_id(c, i)}]\nText: {c.get('text', '')}" for i, c in enumerate(chunks)]
+        )
         prompt = f"Evidence:\n{evidence_text}\n\nQuestion:\n{query}"
 
         response_text = await llm.generate(SYSTEM_PROMPT, prompt)
@@ -90,10 +94,9 @@ class SynthesisAgent(BaseAgent):
             yield {"type": "done", "data": state["synthesis_result"]}
             return
 
-        evidence_text = "\n".join([
-            f"[ID: {_evidence_id(c, i)}]\nText: {c.get('text', '')}"
-            for i, c in enumerate(chunks)
-        ])
+        evidence_text = "\n".join(
+            [f"[ID: {_evidence_id(c, i)}]\nText: {c.get('text', '')}" for i, c in enumerate(chunks)]
+        )
         prompt = f"Evidence:\n{evidence_text}\n\nQuestion:\n{query}"
 
         response_text = ""
@@ -104,5 +107,8 @@ class SynthesisAgent(BaseAgent):
         citations = [_citation_from_chunk(c) for c in chunks[:3]]
         yield {"type": "citations", "data": [c.model_dump() for c in citations]}
 
-        state["synthesis_result"] = {"answer": response_text, "citations": [c.model_dump() for c in citations]}
+        state["synthesis_result"] = {
+            "answer": response_text,
+            "citations": [c.model_dump() for c in citations],
+        }
         yield {"type": "done", "data": state["synthesis_result"]}

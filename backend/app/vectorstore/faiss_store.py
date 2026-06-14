@@ -11,16 +11,18 @@ class FaissStore:
         self.index_path = index_path
         # Use IndexIDMap to support deletion by ID
         self.index = faiss.IndexIDMap(faiss.IndexFlatIP(dimension))
-        self.metadatas = {}  # Changed to dict: faiss_id -> metadata
-        self.chunk_id_to_faiss_id = {}  # Map chunk IDs to FAISS IDs
+        self.metadatas: dict[int, dict] = {}  # Changed to dict: faiss_id -> metadata
+        self.chunk_id_to_faiss_id: dict[str, int] = {}  # Map chunk IDs to FAISS IDs
         self.next_id = 0
         self.load()
 
-    def add_embeddings(self, embeddings: list[list[float]], ids: list[str], metadatas: list[dict] | None = None):
+    def add_embeddings(
+        self, embeddings: list[list[float]], ids: list[str], metadatas: list[dict] | None = None
+    ):
         if metadatas is not None and len(metadatas) != len(ids):
             raise ValueError("metadatas length must match ids length")
 
-        embeddings_np = np.array(embeddings).astype('float32')
+        embeddings_np = np.array(embeddings).astype("float32")
         faiss.normalize_L2(embeddings_np)
 
         # Create FAISS IDs for each embedding
@@ -32,14 +34,16 @@ class FaissStore:
         # Store metadata and mapping
         for i, chunk_id in enumerate(ids):
             faiss_id = int(faiss_ids[i])
-            self.metadatas[faiss_id] = metadatas[i] if metadatas is not None else {"chunk_id": chunk_id}
+            self.metadatas[faiss_id] = (
+                metadatas[i] if metadatas is not None else {"chunk_id": chunk_id}
+            )
             self.chunk_id_to_faiss_id[chunk_id] = faiss_id
 
         self.next_id += len(embeddings)
         self.save()
 
     def search(self, query_embedding: list[float], top_k: int = 5):
-        query_np = np.array([query_embedding]).astype('float32')
+        query_np = np.array([query_embedding]).astype("float32")
         faiss.normalize_L2(query_np)
         scores, indices = self.index.search(query_np, top_k)
 
@@ -47,10 +51,7 @@ class FaissStore:
         for i, idx in enumerate(indices[0]):
             idx = int(idx)
             if idx != -1 and idx in self.metadatas:
-                results.append({
-                    "score": float(scores[0][i]),
-                    "metadata": self.metadatas[idx]
-                })
+                results.append({"score": float(scores[0][i]), "metadata": self.metadatas[idx]})
         return results
 
     def remove(self, chunk_ids: list[str]):
@@ -73,7 +74,7 @@ class FaissStore:
         state = {
             "metadatas": self.metadatas,
             "chunk_id_to_faiss_id": self.chunk_id_to_faiss_id,
-            "next_id": self.next_id
+            "next_id": self.next_id,
         }
         with open(f"{self.index_path}_state.pkl", "wb") as f:
             pickle.dump(state, f)

@@ -6,7 +6,9 @@ from app.core.auth import TokenData, verify_token
 security = HTTPBearer()
 
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> TokenData:
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> TokenData:
     token = credentials.credentials
     token_data = verify_token(token)
     if token_data is None:
@@ -26,4 +28,5 @@ def require_role(allowed_roles: list[str]):
                 detail=f"User role '{current_user.role}' is not authorized for this action",
             )
         return current_user
+
     return role_checker

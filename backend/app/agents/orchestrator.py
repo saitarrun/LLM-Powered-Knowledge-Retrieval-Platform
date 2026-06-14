@@ -19,7 +19,9 @@ class Orchestrator:
         self.web_search = WebSearchAgent()
         self.sql_analyst = SQLAnalystAgent()
 
-    async def run(self, query: str, top_k: int = 5, session_id: str = "default", db=None, filters=None):
+    async def run(
+        self, query: str, top_k: int = 5, session_id: str = "default", db=None, filters=None
+    ):
         state = {
             "query": query,
             "session_id": session_id,
@@ -29,18 +31,18 @@ class Orchestrator:
             "reranked_chunks": [],
             "synthesis_result": {},
             "validation": {},
-            "db": db
+            "db": db,
         }
-        
+
         start_time = asyncio.get_event_loop().time()
-        
+
         # 1. Understanding & Routing
         state, trace = await self.understanding.execute(state)
         state["traces"].append(trace)
         yield {"type": "trace", "data": trace}
-        
+
         decision = state.get("router_decision", "vector")
-        
+
         # 2. Retrieval Branching
         if decision == "web":
             state, trace = await self.web_search.execute(state)
@@ -72,10 +74,11 @@ class Orchestrator:
         state, trace = await self.critic.execute(state)
         state["traces"].append(trace)
         yield {"type": "trace", "data": trace}
-        
+
         end_time = asyncio.get_event_loop().time()
         state["latency_ms"] = int((end_time - start_time) * 1000)
-        
+
         yield {"type": "final_state", "data": state}
+
 
 orchestrator = Orchestrator()

@@ -13,8 +13,7 @@ class RetrievalAgent(BaseAgent):
 
     def __init__(self):
         self.faiss_store = FaissStore(
-            dimension=embedding_service.dimension,
-            index_path=settings.FAISS_INDEX_PATH
+            dimension=embedding_service.dimension, index_path=settings.FAISS_INDEX_PATH
         )
 
     async def execute(self, state: dict[str, Any]) -> tuple[dict[str, Any], TraceEvent]:
@@ -28,9 +27,7 @@ class RetrievalAgent(BaseAgent):
         if not query:
             state["retrieved_candidates"] = []
             return state, TraceEvent(
-                agent=self.name,
-                action="retrieve",
-                result="No query provided."
+                agent=self.name, action="retrieve", result="No query provided."
             )
 
         try:
@@ -38,7 +35,8 @@ class RetrievalAgent(BaseAgent):
             results = self.faiss_store.search(query_embedding, top_k=top_k * overfetch_multiplier)
             if min_vector_score is not None:
                 results = [
-                    result for result in results
+                    result
+                    for result in results
                     if result.get("score", 0) >= float(min_vector_score)
                 ]
             state["retrieved_candidates"] = results
@@ -50,5 +48,5 @@ class RetrievalAgent(BaseAgent):
         return state, TraceEvent(
             agent=self.name,
             action="retrieve",
-            result=f"Found {len(state['retrieved_candidates'])} candidates."
+            result=f"Found {len(state['retrieved_candidates'])} candidates.",
         )

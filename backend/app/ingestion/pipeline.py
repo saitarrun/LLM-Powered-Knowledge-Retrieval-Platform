@@ -15,12 +15,10 @@ class IngestionPipeline:
     def __init__(self):
         self.parser = DocumentParser()
         self.chunker = TextChunker(
-            chunk_size=settings.CHUNK_SIZE,
-            chunk_overlap=settings.CHUNK_OVERLAP
+            chunk_size=settings.CHUNK_SIZE, chunk_overlap=settings.CHUNK_OVERLAP
         )
         self.faiss_store = FaissStore(
-            dimension=embedding_service.dimension,
-            index_path=settings.FAISS_INDEX_PATH
+            dimension=embedding_service.dimension, index_path=settings.FAISS_INDEX_PATH
         )
         logger.info("Initialized IngestionPipeline")
 
@@ -30,11 +28,13 @@ class IngestionPipeline:
         filename: str,
         doc_id: str,
         db: Session,
-        approval_required: bool = False
+        approval_required: bool = False,
     ) -> str:
         """Ingest document: parse → chunk → embed → DB insert → FAISS index."""
         try:
-            logger.info(f"Starting ingestion for {filename} (doc_id={doc_id}, approval_required={approval_required})")
+            logger.info(
+                f"Starting ingestion for {filename} (doc_id={doc_id}, approval_required={approval_required})"
+            )
 
             doc = db.query(Document).filter(Document.id == doc_id).first()
             if not doc:
@@ -78,7 +78,7 @@ class IngestionPipeline:
                     text=chunk["text"],
                     page_number=chunk.get("page_number"),
                     chunk_index=chunk.get("chunk_index", 0),
-                    token_count=len(chunk["text"].split())
+                    token_count=len(chunk["text"].split()),
                 )
                 db_chunks.append(db_chunk)
 

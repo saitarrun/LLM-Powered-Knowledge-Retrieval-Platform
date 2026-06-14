@@ -45,7 +45,9 @@ def test_db():
     Base.metadata.create_all(bind=engine)
     yield engine
 
+    engine.dispose()
     import os
+
     os.unlink(db_path)
 
 
@@ -66,6 +68,7 @@ def db_session(test_db):
 @pytest.fixture(autouse=True)
 def override_app_db(db_session):
     """Route FastAPI dependency-injected DB access to the test transaction."""
+
     def _get_test_db():
         yield db_session
 
@@ -77,8 +80,10 @@ def override_app_db(db_session):
 @pytest.fixture
 def mock_embedding_service():
     """Mock embedding service that returns fixed embeddings."""
-    with patch("app.services.embedding.embedding_service") as service_mock, \
-         patch("app.ingestion.pipeline.embedding_service") as pipeline_mock:
+    with (
+        patch("app.services.embedding.embedding_service") as service_mock,
+        patch("app.ingestion.pipeline.embedding_service") as pipeline_mock,
+    ):
         # Mock embed_one to return a 384-dimensional vector
         for mock in (service_mock, pipeline_mock):
             mock.embed_one.return_value = [0.1] * 384
@@ -99,8 +104,10 @@ def mock_llm_provider():
 @pytest.fixture
 def mock_faiss_store():
     """Mock FAISS store."""
-    with patch("app.vectorstore.faiss_store.FaissStore") as vectorstore_mock, \
-         patch("app.ingestion.pipeline.FaissStore") as pipeline_mock:
+    with (
+        patch("app.vectorstore.faiss_store.FaissStore") as vectorstore_mock,
+        patch("app.ingestion.pipeline.FaissStore") as pipeline_mock,
+    ):
         instance = MagicMock()
         instance.search.return_value = [
             {"score": 0.95, "metadata": {"chunk_id": "chunk1"}},

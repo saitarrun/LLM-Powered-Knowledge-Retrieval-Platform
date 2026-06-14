@@ -25,7 +25,7 @@ class SemanticCache:
         cache_data = {
             "synthesis_result": state.get("synthesis_result"),
             "rewritten_query": state.get("rewritten_query"),
-            "cached": True
+            "cached": True,
         }
         metadata = {"state_json": json.dumps(cache_data)}
         self.store.add_embeddings(

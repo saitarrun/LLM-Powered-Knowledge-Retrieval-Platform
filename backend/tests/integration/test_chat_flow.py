@@ -17,39 +17,27 @@ def client():
 def user_token(db_session):
     """Create a user and return auth token."""
     user = User(
-        email="user@test.com",
-        hashed_password=hash_password("password123"),
-        role=UserRole.VIEWER
+        email="user@test.com", hashed_password=hash_password("password123"), role=UserRole.VIEWER
     )
     db_session.add(user)
     db_session.commit()
     db_session.refresh(user)
 
-    token = create_access_token({
-        "email": user.email,
-        "user_id": user.id,
-        "role": user.role.value
-    })
+    token = create_access_token({"email": user.email, "user_id": user.id, "role": user.role.value})
 
     return token
 
 
 def test_chat_unauthorized(client):
     """Test chat without authentication returns 401."""
-    response = client.post(
-        "/api/v1/chat",
-        json={"message": "What is AI?"}
-    )
+    response = client.post("/api/v1/chat", json={"message": "What is AI?"})
 
     assert response.status_code == 403
 
 
 def test_chat_stream_unauthorized(client):
     """Test streaming chat without authentication returns 401."""
-    response = client.post(
-        "/api/v1/chat/query/stream",
-        json={"query": "What is AI?"}
-    )
+    response = client.post("/api/v1/chat/query/stream", json={"query": "What is AI?"})
 
     assert response.status_code == 403
 
@@ -58,15 +46,13 @@ def test_chat_stream_unauthorized(client):
 async def test_chat_success(client, user_token):
     """Test successful chat request."""
     with patch("app.agents.orchestrator.orchestrator") as mock_orchestrator:
+
         async def mock_run(*args, **kwargs):
             yield {
                 "type": "trace",
-                "data": MagicMock(agent="understanding", action="route", result="vector")
+                "data": MagicMock(agent="understanding", action="route", result="vector"),
             }
-            yield {
-                "type": "token",
-                "data": "test"
-            }
+            yield {"type": "token", "data": "test"}
             yield {
                 "type": "final_state",
                 "data": {
@@ -74,10 +60,10 @@ async def test_chat_success(client, user_token):
                     "rewritten_query": "Define AI",
                     "synthesis_result": {
                         "answer": "Artificial Intelligence is...",
-                        "citations": []
+                        "citations": [],
                     },
-                    "traces": []
-                }
+                    "traces": [],
+                },
             }
 
         mock_orchestrator.run = mock_run
@@ -85,7 +71,7 @@ async def test_chat_success(client, user_token):
         response = client.post(
             "/api/v1/chat",
             json={"message": "What is AI?", "conversation_id": "test_conv"},
-            headers={"Authorization": f"Bearer {user_token}"}
+            headers={"Authorization": f"Bearer {user_token}"},
         )
 
     assert response.status_code == 200
@@ -98,9 +84,7 @@ async def test_chat_success(client, user_token):
 async def test_chat_empty_message_fails(client, user_token):
     """Test chat with empty message returns 400."""
     response = client.post(
-        "/api/v1/chat",
-        json={"message": ""},
-        headers={"Authorization": f"Bearer {user_token}"}
+        "/api/v1/chat", json={"message": ""}, headers={"Authorization": f"Bearer {user_token}"}
     )
 
     assert response.status_code == 400
@@ -127,18 +111,16 @@ def test_get_conversation_not_found(client):
 async def test_query_log_created(client, user_token, db_session):
     """Test that QueryLog is created after chat."""
     with patch("app.agents.orchestrator.orchestrator") as mock_orchestrator:
+
         async def mock_run(*args, **kwargs):
             yield {
                 "type": "final_state",
                 "data": {
                     "query": "Test query",
                     "rewritten_query": "Test query rewritten",
-                    "synthesis_result": {
-                        "answer": "Test answer",
-                        "citations": []
-                    },
-                    "traces": []
-                }
+                    "synthesis_result": {"answer": "Test answer", "citations": []},
+                    "traces": [],
+                },
             }
 
         mock_orchestrator.run = mock_run
@@ -146,7 +128,7 @@ async def test_query_log_created(client, user_token, db_session):
         client.post(
             "/api/v1/chat",
             json={"message": "Test query"},
-            headers={"Authorization": f"Bearer {user_token}"}
+            headers={"Authorization": f"Bearer {user_token}"},
         )
 
     # Verify QueryLog was created
@@ -159,6 +141,7 @@ async def test_query_log_created(client, user_token, db_session):
 async def test_streaming_chat_success(client, user_token):
     """Test successful streaming chat request."""
     with patch("app.agents.orchestrator.orchestrator") as mock_orchestrator:
+
         async def mock_run(*args, **kwargs):
             yield {"type": "token", "data": "Hello "}
             yield {"type": "token", "data": "World"}
@@ -166,12 +149,9 @@ async def test_streaming_chat_success(client, user_token):
                 "type": "final_state",
                 "data": {
                     "query": "What is AI?",
-                    "synthesis_result": {
-                        "answer": "Hello World",
-                        "citations": []
-                    },
-                    "traces": []
-                }
+                    "synthesis_result": {"answer": "Hello World", "citations": []},
+                    "traces": [],
+                },
             }
 
         mock_orchestrator.run = mock_run
@@ -179,7 +159,7 @@ async def test_streaming_chat_success(client, user_token):
         response = client.post(
             "/api/v1/chat/query/stream",
             json={"query": "What is AI?"},
-            headers={"Authorization": f"Bearer {user_token}"}
+            headers={"Authorization": f"Bearer {user_token}"},
         )
 
     assert response.status_code == 200
@@ -191,18 +171,16 @@ async def test_streaming_chat_passes_retrieval_filters(client, user_token):
     captured_kwargs = {}
 
     with patch("app.agents.orchestrator.orchestrator") as mock_orchestrator:
+
         async def mock_run(*args, **kwargs):
             captured_kwargs.update(kwargs)
             yield {
                 "type": "final_state",
                 "data": {
                     "query": "What is AI?",
-                    "synthesis_result": {
-                        "answer": "Filtered answer",
-                        "citations": []
-                    },
-                    "traces": []
-                }
+                    "synthesis_result": {"answer": "Filtered answer", "citations": []},
+                    "traces": [],
+                },
             }
 
         mock_orchestrator.run = mock_run
@@ -216,10 +194,10 @@ async def test_streaming_chat_passes_retrieval_filters(client, user_token):
                     "status": "indexed",
                     "min_vector_score": 0.7,
                     "min_rerank_score": 0.2,
-                    "overfetch_multiplier": 4
-                }
+                    "overfetch_multiplier": 4,
+                },
             },
-            headers={"Authorization": f"Bearer {user_token}"}
+            headers={"Authorization": f"Bearer {user_token}"},
         )
 
     assert response.status_code == 200

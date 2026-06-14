@@ -1,4 +1,5 @@
 """Document ingestion and management routes."""
+
 import os
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -61,7 +62,7 @@ async def upload_document(
     file: UploadFile = File(...),
     approval_required: bool = False,
     current_user: TokenData = Depends(require_role(["curator", "admin"])),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Upload and ingest a document."""
     try:
@@ -84,7 +85,7 @@ async def upload_document(
             content_type=file.content_type,
             file_path=file_path,
             status="processing",
-            approval_required=approval_required
+            approval_required=approval_required,
         )
         db.add(doc)
         db.flush()
@@ -96,14 +97,14 @@ async def upload_document(
             filename=file.filename,
             doc_id=doc_id,
             db=db,
-            approval_required=approval_required
+            approval_required=approval_required,
         )
 
         return {
             "status": status,
             "doc_id": doc_id,
             "filename": file.filename,
-            "message": f"Document ingested with status={status}"
+            "message": f"Document ingested with status={status}",
         }
 
     except HTTPException:
@@ -121,24 +122,23 @@ async def list_documents(db: Session = Depends(get_db)):
 
         docs = []
         for doc in documents:
-            chunk_count = db.query(DocumentChunk).filter(
-                DocumentChunk.document_id == doc.id
-            ).count()
-            docs.append({
-                "id": doc.id,
-                "filename": doc.filename,
-                "status": doc.status,
-                "chunk_count": chunk_count,
-                "indexed_at": doc.indexed_at.isoformat() if doc.indexed_at else None,
-                "approval_required": doc.approval_required,
-                "approved_by": doc.approved_by,
-                "created_at": doc.created_at.isoformat()
-            })
+            chunk_count = (
+                db.query(DocumentChunk).filter(DocumentChunk.document_id == doc.id).count()
+            )
+            docs.append(
+                {
+                    "id": doc.id,
+                    "filename": doc.filename,
+                    "status": doc.status,
+                    "chunk_count": chunk_count,
+                    "indexed_at": doc.indexed_at.isoformat() if doc.indexed_at else None,
+                    "approval_required": doc.approval_required,
+                    "approved_by": doc.approved_by,
+                    "created_at": doc.created_at.isoformat(),
+                }
+            )
 
-        return {
-            "documents": docs,
-            "total": len(docs)
-        }
+        return {"documents": docs, "total": len(docs)}
 
     except Exception as e:
         logger.error(f"List documents error: {e}")
@@ -154,9 +154,7 @@ async def get_document(doc_id: str, db: Session = Depends(get_db)):
         if not doc:
             raise HTTPException(status_code=404, detail="Document not found")
 
-        chunk_count = db.query(DocumentChunk).filter(
-            DocumentChunk.document_id == doc_id
-        ).count()
+        chunk_count = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc_id).count()
 
         return {
             "id": doc.id,
@@ -166,7 +164,7 @@ async def get_document(doc_id: str, db: Session = Depends(get_db)):
             "created_at": doc.created_at.isoformat(),
             "indexed_at": doc.indexed_at.isoformat() if doc.indexed_at else None,
             "approval_required": doc.approval_required,
-            "approved_by": doc.approved_by
+            "approved_by": doc.approved_by,
         }
 
     except HTTPException:
@@ -180,10 +178,11 @@ async def get_document(doc_id: str, db: Session = Depends(get_db)):
 async def get_document_chunk_context(doc_id: str, chunk_id: str, db: Session = Depends(get_db)):
     """Get citation context for a document chunk."""
     try:
-        chunk = db.query(DocumentChunk).filter(
-            DocumentChunk.id == chunk_id,
-            DocumentChunk.document_id == doc_id
-        ).first()
+        chunk = (
+            db.query(DocumentChunk)
+            .filter(DocumentChunk.id == chunk_id, DocumentChunk.document_id == doc_id)
+            .first()
+        )
         doc = db.query(Document).filter(Document.id == doc_id).first()
 
         if not chunk or not doc:
@@ -194,7 +193,7 @@ async def get_document_chunk_context(doc_id: str, chunk_id: str, db: Session = D
                     "message": "Source document or chunk is unavailable",
                     "document_id": doc_id,
                     "chunk_id": chunk_id,
-                }
+                },
             )
 
         preview = " ".join((chunk.text or "").split())
@@ -218,7 +217,7 @@ async def get_document_chunk_context(doc_id: str, chunk_id: str, db: Session = D
                 "page_number": chunk.page_number,
                 "chunk_index": chunk.chunk_index,
                 "token_count": chunk.token_count,
-            }
+            },
         }
 
     except HTTPException:
@@ -232,7 +231,7 @@ async def get_document_chunk_context(doc_id: str, chunk_id: str, db: Session = D
 async def delete_document(
     doc_id: str,
     current_user: TokenData = Depends(require_role(["curator", "admin"])),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Delete a document and its chunks."""
     try:
@@ -242,9 +241,7 @@ async def delete_document(
             raise HTTPException(status_code=404, detail="Document not found")
 
         # Get all chunks for this document to remove from FAISS
-        chunks = db.query(DocumentChunk).filter(
-            DocumentChunk.document_id == doc_id
-        ).all()
+        chunks = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc_id).all()
         chunk_ids = [c.id for c in chunks]
 
         # Delete file from disk
@@ -259,8 +256,7 @@ async def delete_document(
         if chunk_ids and doc.status == "indexed":
             try:
                 faiss_store = FaissStore(
-                    dimension=embedding_service.dimension,
-                    index_path=settings.FAISS_INDEX_PATH
+                    dimension=embedding_service.dimension, index_path=settings.FAISS_INDEX_PATH
                 )
                 faiss_store.remove(chunk_ids)
                 logger.info(f"Removed {len(chunk_ids)} chunks from FAISS index")
@@ -283,10 +279,7 @@ async def delete_document(
 
         logger.info(f"Deleted document {doc_id}")
 
-        return {
-            "status": "deleted",
-            "id": doc_id
-        }
+        return {"status": "deleted", "id": doc_id}
 
     except HTTPException:
         raise

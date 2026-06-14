@@ -18,15 +18,16 @@ Also rewrite the query for better retrieval if needed.
 Return ONLY VALID JSON. Do not include markdown blocks.
 """
 
+
 class QueryUnderstandingAgent(BaseAgent):
     name = "query_understanding"
 
     async def execute(self, state: dict[str, Any]) -> tuple[dict[str, Any], TraceEvent]:
         original_query = state.get("query", "")
         logger.info(f"Query Understanding: {original_query}")
-        
+
         response = await llm.generate(SYSTEM_PROMPT, f"Query: {original_query}", temperature=0.0)
-        
+
         try:
             cleaned = response.replace("```json", "").replace("```", "").strip()
             result = json.loads(cleaned)
@@ -38,15 +39,15 @@ class QueryUnderstandingAgent(BaseAgent):
             rewritten_query = original_query
             intent = "qa"
             router_decision = "vector"
-            
+
         state["rewritten_query"] = rewritten_query
         state["intent"] = intent
         state["router_decision"] = router_decision
-        
+
         trace = TraceEvent(
             agent=self.name,
             action="route_and_rewrite",
-            result=f"Routed -> {router_decision.upper()} | Intent: {intent} | Rewrote: {rewritten_query}"
+            result=f"Routed -> {router_decision.upper()} | Intent: {intent} | Rewrote: {rewritten_query}",
         )
-        
+
         return state, trace

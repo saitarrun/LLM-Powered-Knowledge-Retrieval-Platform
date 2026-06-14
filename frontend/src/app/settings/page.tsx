@@ -6,7 +6,7 @@ import { Settings } from "lucide-react";
 import { useState, useEffect } from "react";
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<Record<string, unknown>>({});
+  const [settings, setSettings] = useState<{ reranking_model?: string; default_top_k?: number; chunk_size?: number; [key: string]: string | number | undefined }>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

@@ -12,11 +12,15 @@ interface Document {
   [key: string]: unknown;
 }
 
-type Analytics = Record<string, unknown> | null;
+interface Analytics {
+  queries?: { avg_latency_ms?: number };
+  chunks?: { total?: number; avg_tokens?: number };
+  [key: string]: unknown;
+}
 
 export default function DocumentsPage() {
   const [docs, setDocs] = useState<Document[]>([]);
-  const [analytics, setAnalytics] = useState<Analytics>(null);
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [isCalibrating, setIsCalibrating] = useState(false);
 
@@ -182,7 +186,7 @@ interface StatCardProps {
   value: string | number;
   metric: string;
   icon: React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
-  accent?: string;
+  accent?: boolean;
 }
 
 function StatCard({ label, value, metric, icon: Icon, accent }: StatCardProps) {

@@ -10,6 +10,7 @@ neo4j_uri = os.getenv("NEO4J_URI", "bolt://neo4j:7687")
 neo4j_user = os.getenv("NEO4J_USER", "neo4j")
 neo4j_password = os.getenv("NEO4J_PASSWORD", "password")
 
+
 class GraphExtractor:
     def __init__(self):
         self.driver = AsyncGraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
@@ -23,8 +24,10 @@ class GraphExtractor:
         Do not include any other markdown or text.
         Text: {text}
         """
-        response = await llm.generate("You are a data extraction bot. Output only valid JSON.", prompt)
-        
+        response = await llm.generate(
+            "You are a data extraction bot. Output only valid JSON.", prompt
+        )
+
         try:
             if "```json" in response:
                 response = response.split("```json")[1].split("```")[0]
@@ -34,41 +37,47 @@ class GraphExtractor:
         except Exception as e:
             logger.error(f"Failed to parse graph triples: {e}")
             return
-            
+
         async with self.driver.session() as session:
             for t in triples:
                 head = t.get("head")
                 rel = t.get("type", "RELATED_TO")
                 tail = t.get("tail")
                 if head and rel and tail:
-                    rel_type = "".join(e for e in rel.upper().replace(" ", "_").replace("-", "_") if e.isalnum() or e == "_")
+                    rel_type = "".join(
+                        e
+                        for e in rel.upper().replace(" ", "_").replace("-", "_")
+                        if e.isalnum() or e == "_"
+                    )
                     if not rel_type:
                         rel_type = "RELATED_TO"
-                    query = f'''
+                    query = f"""
                     MERGE (h:Entity {{id: $head}})
                     MERGE (t:Entity {{id: $tail}})
                     MERGE (h)-[r:`{rel_type}`]->(t)
                     SET r.source_id = $source_id
-                    '''
+                    """
                     try:
-                        await session.run(query, head=head[:100], tail=tail[:100], source_id=source_id)
+                        await session.run(
+                            query, head=head[:100], tail=tail[:100], source_id=source_id
+                        )
                     except Exception as e:
                         logger.warning(f"Neo4j merge error: {e}")
-        
+
     async def query_graph(self, query: str):
         if not llm.client:
             return []
         prompt = f"Extract the main subject entity from this query: '{query}'. Return ONLY the entity string, nothing else."
         entity = await llm.generate("You extract single noun subjects from queries.", prompt)
         entity = entity.strip().strip("'").strip('"')
-        
+
         results = []
         async with self.driver.session() as session:
             try:
                 # Basic context expansion around the entity
                 res = await session.run(
                     "MATCH (e:Entity)-[r]-(t) WHERE toLower(e.id) CONTAINS toLower($ent) RETURN e.id, type(r), t.id LIMIT 10",
-                    ent=entity
+                    ent=entity,
                 )
                 async for record in res:
                     results.append(f"{record['e.id']} {record['type(r)']} {record['t.id']}")
@@ -129,28 +138,28 @@ class GraphExtractor:
 
                     if source not in node_ids:
                         source_type = self._node_type(record["source_labels"])
-                        nodes.append({
-                            "id": source,
-                            "label": record["source_label"] or source,
-                            "type": source_type,
-                            "group": source_type,
-                        })
+                        nodes.append(
+                            {
+                                "id": source,
+                                "label": record["source_label"] or source,
+                                "type": source_type,
+                                "group": source_type,
+                            }
+                        )
                         node_ids.add(source)
                     if target not in node_ids:
                         target_type = self._node_type(record["target_labels"])
-                        nodes.append({
-                            "id": target,
-                            "label": record["target_label"] or target,
-                            "type": target_type,
-                            "group": target_type,
-                        })
+                        nodes.append(
+                            {
+                                "id": target,
+                                "label": record["target_label"] or target,
+                                "type": target_type,
+                                "group": target_type,
+                            }
+                        )
                         node_ids.add(target)
 
-                    links.append({
-                        "source": source,
-                        "target": target,
-                        "type": rel_type
-                    })
+                    links.append({"source": source, "target": target, "type": rel_type})
 
                 isolated_documents = await session.run(
                     """
@@ -165,20 +174,24 @@ class GraphExtractor:
                     document_id = str(record["id"])
                     if document_id in node_ids:
                         continue
-                    nodes.append({
-                        "id": document_id,
-                        "label": record["label"] or document_id,
-                        "type": "document",
-                        "group": "document",
-                        "connected": False,
-                    })
+                    nodes.append(
+                        {
+                            "id": document_id,
+                            "label": record["label"] or document_id,
+                            "type": "document",
+                            "group": "document",
+                            "connected": False,
+                        }
+                    )
                     node_ids.add(document_id)
             except Exception as e:
                 logger.error(f"Failed to fetch full graph: {e}")
                 return self._empty_graph("unavailable", False, ["Neo4j unavailable"])
 
         counts = self._count_nodes(nodes)
-        partial_extraction = bool(nodes) and (counts["document_count"] == 0 or counts["entity_count"] == 0)
+        partial_extraction = bool(nodes) and (
+            counts["document_count"] == 0 or counts["entity_count"] == 0
+        )
         status = "empty"
         if nodes:
             status = "partial" if partial_extraction else "healthy"
@@ -215,7 +228,8 @@ class GraphExtractor:
         chunk_count = sum(1 for node in nodes if node.get("type") == "chunk")
         entity_count = sum(1 for node in nodes if node.get("type") == "entity")
         disconnected_document_count = sum(
-            1 for node in nodes
+            1
+            for node in nodes
             if node.get("type") == "document" and not node.get("connected", True)
         )
         return {
@@ -227,5 +241,6 @@ class GraphExtractor:
 
     async def close(self):
         await self.driver.close()
+
 
 graph_extractor = GraphExtractor()

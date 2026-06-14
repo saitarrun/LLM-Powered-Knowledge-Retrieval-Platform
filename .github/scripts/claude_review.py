@@ -16,7 +16,7 @@ EVENT_NAME         = os.environ.get("GITHUB_EVENT_NAME", "")
 COMMENT_BODY       = os.environ.get("COMMENT_BODY", "")
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL          = "anthropic/claude-sonnet-4-5"
+MODEL          = "google/gemma-4-31b-it:free"
 GH_API         = "https://api.github.com"
 
 HEADERS_GH = {

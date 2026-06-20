@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Chat and conversation routes with streaming support."""
 
 import json
@@ -11,10 +13,14 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.agents import orchestrator as orchestrator_module
+import asyncio
 from app.core.logging import logger
 from app.core.permissions import TokenData, require_role
 from app.db.database import get_db
-from app.db.models import AgentTrace, QueryLog
+from app.db.models import QueryLog
+from app.db.repositories import query_log_repository
+from app.services.embedding import embedding_service
+from app.services.semantic_cache import semantic_cache
 
 router = APIRouter(tags=["chat"])
 
@@ -58,6 +64,15 @@ async def chat(
             raise HTTPException(status_code=400, detail="Message cannot be empty")
 
         start_time = time.time()
+        
+        query_vector = await asyncio.to_thread(embedding_service.embed_one, request.message)
+        cached_result = await asyncio.to_thread(semantic_cache.get, query_vector)
+        
+        if cached_result:
+            latency_ms = int((time.time() - start_time) * 1000)
+            cached_result["latency_ms"] = latency_ms
+            cached_result["cached"] = True
+            return cached_result
 
         # Call orchestrator
         final_state = {}
@@ -72,60 +87,33 @@ async def chat(
                 final_state = event["data"]
 
         # Extract answer and citations
-        answer = final_state.get("synthesis_result", {}).get("answer", "")
-        citations = final_state.get("synthesis_result", {}).get("citations", [])
-
-        # Save query log with traces
+        answer = final_state.synthesis_result.get("answer", "") if final_state else ""
+        citations = final_state.synthesis_result.get("citations", []) if final_state else []
         latency_ms = int((time.time() - start_time) * 1000)
 
-        # Serialize traces to JSON
-        traces = final_state.get("traces", [])
-        trace_json = (
-            json.dumps(
-                [
-                    {
-                        "agent": t.agent if hasattr(t, "agent") else str(t),
-                        "action": t.action if hasattr(t, "action") else "",
-                        "result": t.result if hasattr(t, "result") else "",
-                    }
-                    for t in traces
-                ]
+        if final_state:
+            query_log_repository.persist(
+                db=db,
+                state=final_state,
+                user_id=current_user.user_id,
+                conversation_id=request.conversation_id,
+                latency_ms=latency_ms,
             )
-            if traces
-            else None
-        )
 
-        query_log = QueryLog(
-            user_id=current_user.user_id,
-            conversation_id=request.conversation_id,
-            query=request.message,
-            rewritten_query=final_state.get("rewritten_query"),
-            answer=answer,
-            latency_ms=latency_ms,
-            trace_json=trace_json,
-        )
-        db.add(query_log)
-        db.flush()  # Get query_log.id without committing
-
-        # Persist agent traces
-        for trace in traces:
-            agent_trace = AgentTrace(
-                query_log_id=query_log.id,
-                agent_name=trace.agent if hasattr(trace, "agent") else "unknown",
-                action=trace.action if hasattr(trace, "action") else "",
-                result_summary=trace.result if hasattr(trace, "result") else "",
-            )
-            db.add(agent_trace)
-
-        db.commit()
-
-        return {
+        result_payload = {
             "conversation_id": request.conversation_id or "new",
             "message": request.message,
             "response": answer,
             "citations": citations if isinstance(citations, list) else [],
+            "validation": final_state.validation if final_state else {},
             "latency_ms": latency_ms,
         }
+        
+        # Save to semantic cache
+        if answer:
+            await asyncio.to_thread(semantic_cache.set, query_vector, request.message, result_payload)
+            
+        return result_payload
 
     except HTTPException:
         raise
@@ -145,6 +133,26 @@ async def chat_query_stream(
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
             start_time = time.time()
+            
+            query_vector = await asyncio.to_thread(embedding_service.embed_one, request.query)
+            cached_result = await asyncio.to_thread(semantic_cache.get, query_vector)
+            
+            if cached_result:
+                # Replay cached result as stream events
+                yield f"data: {json.dumps({'type': 'trace', 'agent': 'cache', 'action': 'semantic_hit', 'result': 'Found in cache'})}\n\n"
+                
+                # yield tokens
+                for token in cached_result.get("response", "").split():
+                    yield f"data: {json.dumps({'type': 'token', 'token': token + ' '})}\n\n"
+                    
+                if cached_result.get("citations"):
+                    yield f"data: {json.dumps({'type': 'citations', 'citations': cached_result['citations']})}\n\n"
+                if cached_result.get("validation"):
+                    yield f"data: {json.dumps({'type': 'validation', 'validation': cached_result['validation']})}\n\n"
+                    
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
             final_state = {}
 
             async for event in orchestrator_module.orchestrator.run(
@@ -167,50 +175,27 @@ async def chat_query_stream(
                 elif event["type"] == "final_state":
                     final_state = event["data"]
 
-            # Persist QueryLog with traces
             latency_ms = int((time.time() - start_time) * 1000)
-            answer = final_state.get("synthesis_result", {}).get("answer", "")
-
-            # Serialize traces to JSON
-            traces = final_state.get("traces", [])
-            trace_json = (
-                json.dumps(
-                    [
-                        {
-                            "agent": t.agent if hasattr(t, "agent") else str(t),
-                            "action": t.action if hasattr(t, "action") else "",
-                            "result": t.result if hasattr(t, "result") else "",
-                        }
-                        for t in traces
-                    ]
+            if final_state:
+                query_log_repository.persist(
+                    db=db,
+                    state=final_state,
+                    user_id=current_user.user_id,
+                    conversation_id=request.conversation_id,
+                    latency_ms=latency_ms,
                 )
-                if traces
-                else None
-            )
-
-            query_log = QueryLog(
-                user_id=current_user.user_id,
-                conversation_id=request.conversation_id,
-                query=request.query,
-                rewritten_query=final_state.get("rewritten_query"),
-                answer=answer,
-                latency_ms=latency_ms,
-                trace_json=trace_json,
-            )
-            db.add(query_log)
-            db.flush()  # Get query_log.id without committing
-
-            # Persist agent traces
-            for trace in traces:
-                agent_trace = AgentTrace(
-                    query_log_id=query_log.id,
-                    agent_name=trace.agent if hasattr(trace, "agent") else "unknown",
-                    action=trace.action if hasattr(trace, "action") else "",
-                    result_summary=trace.result if hasattr(trace, "result") else "",
-                )
-                db.add(agent_trace)
-
-            db.commit()
+                yield f"data: {json.dumps({'type': 'validation', 'validation': final_state.validation})}\n\n"
+                
+                # Save to semantic cache
+                result_payload = {
+                    "conversation_id": request.conversation_id or "new",
+                    "message": request.query,
+                    "response": final_state.synthesis_result.get("answer", ""),
+                    "citations": final_state.synthesis_result.get("citations", []),
+                    "validation": final_state.validation,
+                    "latency_ms": latency_ms,
+                }
+                await asyncio.to_thread(semantic_cache.set, query_vector, request.query, result_payload)
 
             logger.info(f"Query completed in {latency_ms}ms")
 

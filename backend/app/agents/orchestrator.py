@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import asyncio
 
+from app.agents.compression import ContextCompressionAgent
 from app.agents.critic import CriticAgent
 from app.agents.evidence import EvidenceAgent
 from app.agents.query_understanding import QueryUnderstandingAgent
@@ -7,6 +10,7 @@ from app.agents.retrieval import RetrievalAgent
 from app.agents.sql_analyst import SQLAnalystAgent
 from app.agents.synthesis import SynthesisAgent
 from app.agents.web_search import WebSearchAgent
+from app.schemas.query_state import QueryState, RetrievalConfig
 
 
 class Orchestrator:
@@ -14,6 +18,7 @@ class Orchestrator:
         self.understanding = QueryUnderstandingAgent()
         self.retrieval = RetrievalAgent()
         self.evidence = EvidenceAgent()
+        self.compression = ContextCompressionAgent()
         self.synthesis = SynthesisAgent()
         self.critic = CriticAgent()
         self.web_search = WebSearchAgent()
@@ -22,61 +27,61 @@ class Orchestrator:
     async def run(
         self, query: str, top_k: int = 5, session_id: str = "default", db=None, filters=None
     ):
-        state = {
-            "query": query,
-            "session_id": session_id,
-            "config": {"top_k": top_k, "filters": filters or {}},
-            "traces": [],
-            "retrieved_candidates": [],
-            "reranked_chunks": [],
-            "synthesis_result": {},
-            "validation": {},
-            "db": db,
-        }
+        state = QueryState(
+            query=query,
+            session_id=session_id,
+            config=RetrievalConfig(top_k=top_k, filters=filters or {}),
+            db=db,
+        )
 
         start_time = asyncio.get_event_loop().time()
 
         # 1. Understanding & Routing
         state, trace = await self.understanding.execute(state)
-        state["traces"].append(trace)
+        state.traces.append(trace)
         yield {"type": "trace", "data": trace}
 
-        decision = state.get("router_decision", "vector")
+        decision = state.router_decision
 
         # 2. Retrieval Branching
         if decision == "web":
             state, trace = await self.web_search.execute(state)
-            state["traces"].append(trace)
+            state.traces.append(trace)
             yield {"type": "trace", "data": trace}
         elif decision == "sql":
             state, trace = await self.sql_analyst.execute(state)
-            state["traces"].append(trace)
+            state.traces.append(trace)
             yield {"type": "trace", "data": trace}
         else:
             state, trace = await self.retrieval.execute(state)
-            state["traces"].append(trace)
+            state.traces.append(trace)
             yield {"type": "trace", "data": trace}
 
         # 3. Reranking (Evidence)
         state, trace = await self.evidence.execute(state)
-        state["traces"].append(trace)
+        state.traces.append(trace)
         yield {"type": "trace", "data": trace}
 
+        # 3.5 Context Compression
+        if decision not in ("web", "sql"):
+            state, trace = await self.compression.execute(state)
+            state.traces.append(trace)
+            yield {"type": "trace", "data": trace}
+
         # 4. Synthesis (Answer Generation)
-        # We wrap synthesis in a generator for streaming
         async for msg in self.synthesis.execute_stream(state):
-            if msg["type"] == "citations" or msg["type"] == "token":
+            if msg["type"] in ("citations", "token"):
                 yield msg
             elif msg["type"] == "done":
-                state["synthesis_result"] = msg["data"]
+                state.synthesis_result = msg["data"]
 
         # 5. Validation (Critic)
         state, trace = await self.critic.execute(state)
-        state["traces"].append(trace)
+        state.traces.append(trace)
         yield {"type": "trace", "data": trace}
 
         end_time = asyncio.get_event_loop().time()
-        state["latency_ms"] = int((end_time - start_time) * 1000)
+        state.latency_ms = int((end_time - start_time) * 1000)
 
         yield {"type": "final_state", "data": state}
 

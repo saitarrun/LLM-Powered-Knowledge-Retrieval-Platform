@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import datetime
 import uuid
-from enum import StrEnum
+from enum import Enum
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy import Enum as SQLEnum
@@ -9,7 +11,7 @@ from sqlalchemy.orm import relationship
 from app.db.database import Base
 
 
-class UserRole(StrEnum):
+class UserRole(str, Enum):
     VIEWER = "viewer"
     CURATOR = "curator"
     ADMIN = "admin"
@@ -42,6 +44,7 @@ class DocumentChunk(Base):
     id = Column(String, primary_key=True, default=generate_uuid, index=True)
     document_id = Column(String, ForeignKey("documents.id"))
     text = Column(Text)
+    parent_text = Column(Text, nullable=True)
     page_number = Column(Integer, nullable=True)
     chunk_index = Column(Integer)
     token_count = Column(Integer, default=0)

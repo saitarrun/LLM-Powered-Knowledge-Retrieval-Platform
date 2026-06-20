@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sys
 import tempfile
 from unittest.mock import MagicMock, patch
@@ -14,8 +16,13 @@ for mod in [
     "celery",
     "redis",
     "langchain_text_splitters",
-    "fitz",  # PyMuPDF
-    "docx",  # python-docx
+    "unstructured",
+    "unstructured.partition",
+    "unstructured.partition.auto",
+    "phoenix",
+    "openinference",
+    "openinference.instrumentation",
+    "openinference.instrumentation.langchain",
     "openai",
 ]:
     if mod not in sys.modules:
@@ -92,6 +99,14 @@ def mock_embedding_service():
         yield pipeline_mock
 
 
+@pytest.fixture(autouse=True)
+def mock_semantic_cache():
+    """Mock semantic cache to avoid Faiss mock unpacking errors."""
+    with patch("app.api.chat.semantic_cache") as mock_cache:
+        mock_cache.get.return_value = None
+        mock_cache.set.return_value = None
+        yield mock_cache
+
 @pytest.fixture
 def mock_llm_provider():
     """Mock LLM provider."""
@@ -104,10 +119,7 @@ def mock_llm_provider():
 @pytest.fixture
 def mock_faiss_store():
     """Mock FAISS store."""
-    with (
-        patch("app.vectorstore.faiss_store.FaissStore") as vectorstore_mock,
-        patch("app.ingestion.pipeline.FaissStore") as pipeline_mock,
-    ):
+    with patch("app.vectorstore.faiss_store.FaissStore") as vectorstore_mock:
         instance = MagicMock()
         instance.search.return_value = [
             {"score": 0.95, "metadata": {"chunk_id": "chunk1"}},
@@ -116,5 +128,4 @@ def mock_faiss_store():
         instance.add_embeddings.return_value = None
         instance.remove.return_value = None
         vectorstore_mock.return_value = instance
-        pipeline_mock.return_value = instance
         yield instance

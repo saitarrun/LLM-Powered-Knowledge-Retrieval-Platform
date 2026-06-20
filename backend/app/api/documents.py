@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Document ingestion and management routes."""
 
 import os

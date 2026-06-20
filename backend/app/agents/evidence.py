@@ -1,73 +1,41 @@
-from typing import Any
+from __future__ import annotations
+
+import asyncio
 
 from sentence_transformers import CrossEncoder
 
 from app.agents.base import BaseAgent
 from app.core.config import settings
 from app.core.logging import logger
-from app.db.models import Document, DocumentChunk
+from app.db.repositories import ChunkRepository, chunk_repository
 from app.schemas.models import TraceEvent
+from app.schemas.query_state import QueryState
 
 
 class EvidenceAgent(BaseAgent):
     name = "evidence"
 
-    def __init__(self):
+    def __init__(
+        self,
+        reranker: CrossEncoder | None = None,
+        repo: ChunkRepository | None = None,
+    ) -> None:
         logger.info(f"Loading CrossEncoder: {settings.RERANKING_MODEL}")
-        self.reranker = CrossEncoder(settings.RERANKING_MODEL)
+        self.reranker = reranker or CrossEncoder(settings.RERANKING_MODEL)
+        self._repo = repo or chunk_repository
 
-    async def execute(self, state: dict[str, Any]) -> tuple[dict[str, Any], TraceEvent]:
-        query = state.get("rewritten_query", state.get("query", ""))
-        candidates = state.get("retrieved_candidates", [])
-        config = state.get("config", {})
-        top_k = config.get("top_k", 5)
-        filters = config.get("filters") or {}
-        db = state.get("db")
+    async def execute(self, state: QueryState) -> tuple[QueryState, TraceEvent]:
+        query = state.rewritten_query or state.query
+        candidates = state.retrieved_candidates
+        top_k = state.config.top_k
+        filters = state.config.filters
+        db = state.db
 
         if not candidates:
-            state["reranked_chunks"] = []
+            state.reranked_chunks = []
             return state, TraceEvent(agent=self.name, action="rerank", result="No candidates.")
 
         chunk_ids = [c["metadata"]["chunk_id"] for c in candidates]
-        db_chunks = []
-        if db is not None:
-            query_builder = (
-                db.query(DocumentChunk).join(Document).filter(DocumentChunk.id.in_(chunk_ids))
-            )
-
-            document_ids = filters.get("document_ids")
-            if document_ids:
-                query_builder = query_builder.filter(Document.id.in_(document_ids))
-
-            filename_contains = filters.get("filename_contains")
-            if filename_contains:
-                query_builder = query_builder.filter(
-                    Document.filename.ilike(f"%{filename_contains}%")
-                )
-
-            status = filters.get("status")
-            if status:
-                query_builder = query_builder.filter(Document.status == status)
-
-            if "approval_required" in filters:
-                query_builder = query_builder.filter(
-                    Document.approval_required == filters["approval_required"]
-                )
-
-            approved_by = filters.get("approved_by")
-            if approved_by:
-                query_builder = query_builder.filter(Document.approved_by == approved_by)
-
-            created_after = filters.get("created_after")
-            if created_after:
-                query_builder = query_builder.filter(Document.created_at >= created_after)
-
-            created_before = filters.get("created_before")
-            if created_before:
-                query_builder = query_builder.filter(Document.created_at <= created_before)
-
-            db_chunks = query_builder.all()
-        chunk_map = {c.id: c for c in db_chunks}
         document_filters_present = any(
             key in filters
             for key in [
@@ -81,11 +49,16 @@ class EvidenceAgent(BaseAgent):
             ]
         )
 
+        chunk_map: dict = {}
+        if db is not None:
+            db_chunks = self._repo.fetch_chunks(db, chunk_ids, filters)
+            chunk_map = {c.id: c for c in db_chunks}
+
         valid_candidates = []
         pairs = []
         for c in candidates:
             chunk_id = c["metadata"]["chunk_id"]
-            if document_filters_present and chunk_id not in chunk_map:
+            if document_filters_present and chunk_id not in chunk_map and chunk_id != "graph_node":
                 continue
             txt = chunk_map[chunk_id].text if chunk_id in chunk_map else c.get("text")
             if txt:
@@ -100,29 +73,29 @@ class EvidenceAgent(BaseAgent):
                 )
 
         if not pairs:
-            state["reranked_chunks"] = valid_candidates[:top_k]
+            state.reranked_chunks = valid_candidates[:top_k]
             return state, TraceEvent(agent=self.name, action="skip_rerank", result="No pairs.")
 
-        scores = self.reranker.predict(pairs)
+        scores = await asyncio.to_thread(self.reranker.predict, pairs)
         for i, score in enumerate(scores):
             valid_candidates[i]["rerank_score"] = float(score)
 
         valid_candidates.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
-        has_explicit_rerank_threshold = "min_rerank_score" in filters
+        has_explicit_threshold = "min_rerank_score" in filters
         min_rerank_score = float(filters.get("min_rerank_score", -5.0))
         final_chunks = [
             c for c in valid_candidates[:top_k] if c.get("rerank_score", 0) >= min_rerank_score
         ]
-        state["reranked_chunks"] = (
+        state.reranked_chunks = (
             final_chunks
-            if has_explicit_rerank_threshold
+            if has_explicit_threshold
             else (final_chunks or valid_candidates[:top_k])
         )
 
         return state, TraceEvent(
             agent=self.name,
             action="rerank",
-            result=f"Selected {len(state['reranked_chunks'])} chunks.",
+            result=f"Selected {len(state.reranked_chunks)} chunks.",
         )
 
 

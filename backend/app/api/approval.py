@@ -1,21 +1,18 @@
+from __future__ import annotations
+
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.core.permissions import TokenData, require_role
 from app.db.database import get_db
 from app.db.models import AuditLog, Document, DocumentChunk
 from app.services.embedding import embedding_service
-from app.vectorstore.faiss_store import FaissStore
+from app.vectorstore.hybrid_store import hybrid_store
 
 router = APIRouter(tags=["approval"])
-faiss_store = FaissStore(
-    dimension=embedding_service.dimension,
-    index_path=settings.FAISS_INDEX_PATH,
-)
 
 
 class DocumentPreview(BaseModel):
@@ -110,7 +107,13 @@ async def approve_document(
             chunk_ids_to_add.append(chunks[i].id)
 
     if embeddings_to_add:
-        faiss_store.add_embeddings(embeddings_to_add, chunk_ids_to_add)
+        texts_to_add = [c.text for c in chunks if c.id in chunk_ids_to_add]
+        hybrid_store.add(
+            texts=texts_to_add,
+            ids=chunk_ids_to_add,
+            embeddings=embeddings_to_add,
+            metadatas=[{"chunk_id": cid} for cid in chunk_ids_to_add],
+        )
         for chunk in chunks:
             if chunk.id in chunk_ids_to_add:
                 chunk.embedding_id = chunk.id

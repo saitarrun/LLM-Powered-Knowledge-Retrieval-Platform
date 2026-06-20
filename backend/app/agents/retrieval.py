@@ -1,52 +1,60 @@
-from typing import Any
+from __future__ import annotations
 
 from app.agents.base import BaseAgent
-from app.core.config import settings
 from app.core.logging import logger
 from app.schemas.models import TraceEvent
-from app.services.embedding import embedding_service
-from app.vectorstore.faiss_store import FaissStore
+from app.schemas.query_state import QueryState
+from app.vectorstore.hybrid_store import HybridStore, hybrid_store
+import asyncio
+from app.graph.extractor import graph_extractor
 
 
 class RetrievalAgent(BaseAgent):
     name = "retrieval"
 
-    def __init__(self):
-        self.faiss_store = FaissStore(
-            dimension=embedding_service.dimension, index_path=settings.FAISS_INDEX_PATH
+    def __init__(self, store: HybridStore | None = None) -> None:
+        self._store = store or hybrid_store
+
+    async def execute(self, state: QueryState) -> tuple[QueryState, TraceEvent]:
+        query = state.rewritten_query or state.query
+        variations = state.query_variations or [query]
+        fetch_k = state.config.top_k * max(
+            int(state.config.filters.get("overfetch_multiplier") or 2), 1
         )
 
-    async def execute(self, state: dict[str, Any]) -> tuple[dict[str, Any], TraceEvent]:
-        query = state.get("rewritten_query", state.get("query", ""))
-        config = state.get("config", {})
-        top_k = config.get("top_k", 5)
-        filters = config.get("filters") or {}
-        overfetch_multiplier = max(int(filters.get("overfetch_multiplier") or 2), 1)
-        min_vector_score = filters.get("min_vector_score")
-
         if not query:
-            state["retrieved_candidates"] = []
+            state.retrieved_candidates = []
             return state, TraceEvent(
                 agent=self.name, action="retrieve", result="No query provided."
             )
 
         try:
-            query_embedding = embedding_service.embed_one(query)
-            results = self.faiss_store.search(query_embedding, top_k=top_k * overfetch_multiplier)
-            if min_vector_score is not None:
-                results = [
-                    result
-                    for result in results
-                    if result.get("score", 0) >= float(min_vector_score)
-                ]
-            state["retrieved_candidates"] = results
-            logger.info(f"Retrieved {len(results)} candidates for query: {query}")
+            candidates_task = self._store.search_multi(variations, top_k=fetch_k)
+            graph_task = graph_extractor.query_graph(query)
+            
+            candidates, graph_results = await asyncio.gather(candidates_task, graph_task)
+            
+            for gr in graph_results:
+                candidates.append({
+                    "score": 1.0,
+                    "metadata": {"chunk_id": "graph_node"},
+                    "text": f"Knowledge Graph Context: {gr}"
+                })
         except Exception as e:
             logger.error(f"Retrieval error: {e}")
-            state["retrieved_candidates"] = []
+            state.retrieved_candidates = []
+            return state, TraceEvent(
+                agent=self.name, action="retrieve", result=f"Retrieval failed: {e}"
+            )
+
+        state.retrieved_candidates = candidates
+        logger.info(
+            f"Hybrid RRF retrieved {len(candidates) - len(graph_results)} chunks + {len(graph_results)} graph edges "
+            f"from {len(variations)} variations for: {query}"
+        )
 
         return state, TraceEvent(
             agent=self.name,
             action="retrieve",
-            result=f"Found {len(state['retrieved_candidates'])} candidates.",
+            result=f"Found {len(candidates)} candidates via hybrid RRF ({len(variations)} variations).",
         )

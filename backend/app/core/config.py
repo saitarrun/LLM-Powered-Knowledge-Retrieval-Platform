@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 
 from pydantic_settings import BaseSettings
@@ -16,8 +18,7 @@ class Settings(BaseSettings):
 
     # Vector Store
     FAISS_INDEX_PATH: str = os.getenv("FAISS_INDEX_PATH", "./faiss_index")
-    SEMANTIC_CACHE_PATH: str = os.getenv("SEMANTIC_CACHE_PATH", "./semantic_cache")
-    SEMANTIC_CACHE_THRESHOLD: float = float(os.getenv("SEMANTIC_CACHE_THRESHOLD", "0.96"))
+    BM25_INDEX_PATH: str = os.getenv("BM25_INDEX_PATH", "./bm25_index")
 
     # Storage
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "./uploads")
@@ -29,6 +30,7 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
     RERANKING_MODEL: str = os.getenv("RERANKING_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openai")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "http://localhost:11434")
 

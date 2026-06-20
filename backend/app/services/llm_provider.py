@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections.abc import AsyncGenerator
 
 from openai import AsyncOpenAI
@@ -8,9 +10,15 @@ from app.core.logging import logger
 
 class LLMProvider:
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        self.model = "gpt-4o-mini"
-        logger.info(f"Initialized LLM provider with model: {self.model}")
+        if settings.LLM_PROVIDER == "ollama":
+            self.client = AsyncOpenAI(
+                api_key="ollama",
+                base_url=settings.LLM_BASE_URL,
+            )
+        else:
+            self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        self.model = settings.LLM_MODEL
+        logger.info(f"Initialized LLM provider: {settings.LLM_PROVIDER} / {self.model}")
 
     async def generate(
         self, system_prompt: str, user_prompt: str, temperature: float = 0.7, max_tokens: int = 2000

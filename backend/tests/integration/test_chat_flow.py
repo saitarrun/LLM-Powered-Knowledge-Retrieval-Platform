@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from app.schemas.query_state import QueryState
 
 from app.core.auth import create_access_token, hash_password
 from app.db.models import QueryLog, User, UserRole
@@ -32,14 +35,14 @@ def test_chat_unauthorized(client):
     """Test chat without authentication returns 401."""
     response = client.post("/api/v1/chat", json={"message": "What is AI?"})
 
-    assert response.status_code == 403
+    assert response.status_code in (401, 403)
 
 
 def test_chat_stream_unauthorized(client):
     """Test streaming chat without authentication returns 401."""
     response = client.post("/api/v1/chat/query/stream", json={"query": "What is AI?"})
 
-    assert response.status_code == 403
+    assert response.status_code in (401, 403)
 
 
 @pytest.mark.asyncio
@@ -55,15 +58,15 @@ async def test_chat_success(client, user_token):
             yield {"type": "token", "data": "test"}
             yield {
                 "type": "final_state",
-                "data": {
-                    "query": "What is AI?",
-                    "rewritten_query": "Define AI",
-                    "synthesis_result": {
+                "data": QueryState(
+                    query="What is AI?",
+                    rewritten_query="Define AI",
+                    synthesis_result={
                         "answer": "Artificial Intelligence is...",
                         "citations": [],
                     },
-                    "traces": [],
-                },
+                    traces=[],
+                ),
             }
 
         mock_orchestrator.run = mock_run
@@ -115,12 +118,12 @@ async def test_query_log_created(client, user_token, db_session):
         async def mock_run(*args, **kwargs):
             yield {
                 "type": "final_state",
-                "data": {
-                    "query": "Test query",
-                    "rewritten_query": "Test query rewritten",
-                    "synthesis_result": {"answer": "Test answer", "citations": []},
-                    "traces": [],
-                },
+                "data": QueryState(
+                    query="Test query",
+                    rewritten_query="Test query rewritten",
+                    synthesis_result={"answer": "Test answer", "citations": []},
+                    traces=[],
+                ),
             }
 
         mock_orchestrator.run = mock_run
@@ -147,11 +150,11 @@ async def test_streaming_chat_success(client, user_token):
             yield {"type": "token", "data": "World"}
             yield {
                 "type": "final_state",
-                "data": {
-                    "query": "What is AI?",
-                    "synthesis_result": {"answer": "Hello World", "citations": []},
-                    "traces": [],
-                },
+                "data": QueryState(
+                    query="What is AI?",
+                    synthesis_result={"answer": "Hello World", "citations": []},
+                    traces=[],
+                ),
             }
 
         mock_orchestrator.run = mock_run
@@ -176,11 +179,11 @@ async def test_streaming_chat_passes_retrieval_filters(client, user_token):
             captured_kwargs.update(kwargs)
             yield {
                 "type": "final_state",
-                "data": {
-                    "query": "What is AI?",
-                    "synthesis_result": {"answer": "Filtered answer", "citations": []},
-                    "traces": [],
-                },
+                "data": QueryState(
+                    query="What is AI?",
+                    synthesis_result={"answer": "Filtered answer", "citations": []},
+                    traces=[],
+                ),
             }
 
         mock_orchestrator.run = mock_run

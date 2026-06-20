@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -8,18 +10,16 @@ from app.db.models import Document, DocumentChunk
 from app.ingestion.chunking.chunker import TextChunker
 from app.ingestion.loaders.parser import DocumentParser
 from app.services.embedding import embedding_service
-from app.vectorstore.faiss_store import FaissStore
+from app.vectorstore.hybrid_store import HybridStore, hybrid_store
 
 
 class IngestionPipeline:
-    def __init__(self):
+    def __init__(self, store: HybridStore | None = None) -> None:
         self.parser = DocumentParser()
         self.chunker = TextChunker(
-            chunk_size=settings.CHUNK_SIZE, chunk_overlap=settings.CHUNK_OVERLAP
+            parent_chunk_size=2000, child_chunk_size=400, overlap=50
         )
-        self.faiss_store = FaissStore(
-            dimension=embedding_service.dimension, index_path=settings.FAISS_INDEX_PATH
-        )
+        self._store = store or hybrid_store
         logger.info("Initialized IngestionPipeline")
 
     async def ingest(
@@ -30,7 +30,7 @@ class IngestionPipeline:
         db: Session,
         approval_required: bool = False,
     ) -> str:
-        """Ingest document: parse → chunk → embed → DB insert → FAISS index."""
+        """Ingest document: parse → chunk → embed → DB insert → index."""
         try:
             logger.info(
                 f"Starting ingestion for {filename} (doc_id={doc_id}, approval_required={approval_required})"
@@ -76,6 +76,7 @@ class IngestionPipeline:
                 db_chunk = DocumentChunk(
                     document_id=doc_id,
                     text=chunk["text"],
+                    parent_text=chunk.get("parent_text"),
                     page_number=chunk.get("page_number"),
                     chunk_index=chunk.get("chunk_index", 0),
                     token_count=len(chunk["text"].split()),
@@ -83,7 +84,7 @@ class IngestionPipeline:
                 db_chunks.append(db_chunk)
 
             db.add_all(db_chunks)
-            db.flush()  # Get IDs without committing
+            db.flush()
 
             logger.info(f"Created {len(db_chunks)} DB chunk records")
 
@@ -92,13 +93,18 @@ class IngestionPipeline:
             embeddings = embedding_service.embed(texts)
             logger.info(f"Generated {len(embeddings)} embeddings")
 
-            # 5. Index to FAISS (unless approval required)
+            # 5. Index to HybridStore (FAISS + BM25) unless approval required
             if not approval_required:
                 chunk_ids = [c.id for c in db_chunks]
-                self.faiss_store.add_embeddings(embeddings, chunk_ids)
+                self._store.add(
+                    texts=texts,
+                    ids=chunk_ids,
+                    embeddings=embeddings,
+                    metadatas=[{"chunk_id": c.id, "parent_text": c.parent_text} for c in db_chunks],
+                )
                 status = "indexed"
                 indexed_at = datetime.utcnow()
-                logger.info(f"Indexed {len(embeddings)} embeddings to FAISS")
+                logger.info(f"Indexed {len(embeddings)} chunks via HybridStore")
             else:
                 status = "pending"
                 indexed_at = None

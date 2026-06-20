@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 from unittest.mock import MagicMock
 
@@ -5,6 +7,7 @@ import pytest
 
 from app.agents.evidence import EvidenceAgent
 from app.db.models import Document, DocumentChunk
+from app.schemas.query_state import QueryState, RetrievalConfig
 
 
 def add_document_with_chunk(
@@ -33,7 +36,6 @@ def add_document_with_chunk(
 
 @pytest.mark.asyncio
 async def test_evidence_agent_applies_document_filters(db_session):
-    """Test evidence filters candidates by document metadata."""
     add_document_with_chunk(db_session, "doc1", "chunk1", "alpha.txt", status="indexed")
     add_document_with_chunk(db_session, "doc2", "chunk2", "beta.txt", status="pending")
 
@@ -41,31 +43,30 @@ async def test_evidence_agent_applies_document_filters(db_session):
     agent.reranker = MagicMock()
     agent.reranker.predict.return_value = [1.0]
 
-    state = {
-        "query": "alpha",
-        "db": db_session,
-        "retrieved_candidates": [
+    state = QueryState(
+        query="alpha",
+        db=db_session,
+        retrieved_candidates=[
             {"score": 0.9, "metadata": {"chunk_id": "chunk1"}},
             {"score": 0.8, "metadata": {"chunk_id": "chunk2"}},
         ],
-        "config": {
-            "top_k": 5,
-            "filters": {
+        config=RetrievalConfig(
+            top_k=5,
+            filters={
                 "document_ids": ["doc1"],
                 "status": "indexed",
                 "filename_contains": "alpha",
             },
-        },
-    }
+        ),
+    )
 
     result_state, trace = await agent.execute(state)
 
-    assert [c["db_chunk"].id for c in result_state["reranked_chunks"]] == ["chunk1"]
+    assert [c["db_chunk"].id for c in result_state.reranked_chunks] == ["chunk1"]
 
 
 @pytest.mark.asyncio
 async def test_evidence_agent_applies_min_rerank_score(db_session):
-    """Test evidence removes chunks below the configured rerank score."""
     add_document_with_chunk(db_session, "doc1", "chunk1", "alpha.txt")
     add_document_with_chunk(db_session, "doc2", "chunk2", "beta.txt")
 
@@ -73,21 +74,16 @@ async def test_evidence_agent_applies_min_rerank_score(db_session):
     agent.reranker = MagicMock()
     agent.reranker.predict.return_value = [0.5, -0.25]
 
-    state = {
-        "query": "alpha",
-        "db": db_session,
-        "retrieved_candidates": [
+    state = QueryState(
+        query="alpha",
+        db=db_session,
+        retrieved_candidates=[
             {"score": 0.9, "metadata": {"chunk_id": "chunk1"}},
             {"score": 0.8, "metadata": {"chunk_id": "chunk2"}},
         ],
-        "config": {
-            "top_k": 5,
-            "filters": {
-                "min_rerank_score": 0.0,
-            },
-        },
-    }
+        config=RetrievalConfig(top_k=5, filters={"min_rerank_score": 0.0}),
+    )
 
     result_state, trace = await agent.execute(state)
 
-    assert [c["db_chunk"].id for c in result_state["reranked_chunks"]] == ["chunk1"]
+    assert [c["db_chunk"].id for c in result_state.reranked_chunks] == ["chunk1"]

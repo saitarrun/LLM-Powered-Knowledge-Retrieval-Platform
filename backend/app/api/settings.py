@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Settings and configuration routes."""
 
 from fastapi import APIRouter

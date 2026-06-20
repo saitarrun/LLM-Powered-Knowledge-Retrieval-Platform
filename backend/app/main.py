@@ -1,9 +1,21 @@
+from __future__ import annotations
+
 import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+
+# Initialize Arize Phoenix for observability
+try:
+    import phoenix as px
+    from openinference.instrumentation.langchain import LangChainInstrumentor
+    
+    px.launch_app()
+    LangChainInstrumentor().instrument()
+except ImportError:
+    print("Warning: arize-phoenix or openinference not installed, tracing disabled.")
 
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 os.makedirs(

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, Request
 
 from app.services.openai_compatible_adapter import forward_chat_completion

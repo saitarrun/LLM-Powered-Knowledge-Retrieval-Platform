@@ -1,11 +1,23 @@
+from __future__ import annotations
+
 from collections.abc import AsyncGenerator
 from typing import Any
 
 from app.agents.base import BaseAgent
 from app.schemas.models import Citation, TraceEvent
+from app.schemas.query_state import QueryState
 from app.services.llm_provider import llm
 
-SYSTEM_PROMPT = "You are a synthesis agent. Use the provided evidence to answer the question concisely and accurately."
+SYSTEM_PROMPT = """\
+You are a synthesis agent that answers questions strictly from the provided sources.
+
+Rules:
+- Cite sources inline using [N] notation — e.g. "The model achieves 94% accuracy [1]."
+- Use only information present in the provided sources. Do not add facts from outside knowledge.
+- If the sources do not contain enough information to fully answer, say so explicitly.
+- If sources contradict each other, note the disagreement and cite both sides.
+- Be concise and direct. Avoid filler phrases like "Based on the provided context...".\
+"""
 
 
 def _snippet(text: str, max_length: int = 300) -> str:
@@ -56,59 +68,77 @@ def _citation_from_chunk(chunk: dict[str, Any]) -> Citation:
     )
 
 
-def _evidence_id(chunk: dict[str, Any], index: int) -> str:
-    return _chunk_id(chunk) or f"source-{index + 1}"
+def _format_source(chunk: dict[str, Any], index: int) -> str:
+    """Render one chunk as a numbered source block for the LLM prompt."""
+    db_chunk = chunk.get("db_chunk")
+    doc_name = None
+    page = None
+    if db_chunk is not None:
+        doc = getattr(db_chunk, "document", None)
+        doc_name = getattr(doc, "filename", None)
+        page = getattr(db_chunk, "page_number", None)
+
+    header = f"[{index + 1}]"
+    if doc_name:
+        header += f" {doc_name}"
+    if page is not None:
+        header += f", p.{page}"
+
+    # Use parent_text if available for hierarchical chunking context
+    chunk_text = getattr(db_chunk, "parent_text", None) if db_chunk else None
+    if not chunk_text:
+        chunk_text = chunk.get("text", getattr(db_chunk, "text", ""))
+
+    return f"{header}\n{chunk_text}"
+
+
+def _build_prompt(query: str, chunks: list[dict[str, Any]]) -> str:
+    sources = "\n\n".join(_format_source(c, i) for i, c in enumerate(chunks))
+    return f"Sources:\n{sources}\n\nQuestion: {query}"
 
 
 class SynthesisAgent(BaseAgent):
     name = "synthesis"
 
-    async def execute(self, state: dict[str, Any]) -> tuple[dict[str, Any], TraceEvent]:
-        query = state.get("query", "")
-        chunks = state.get("reranked_chunks", [])
+    async def execute(self, state: QueryState) -> tuple[QueryState, TraceEvent]:
+        query = state.rewritten_query or state.query
+        chunks = state.reranked_chunks
 
         if not chunks:
-            state["synthesis_result"] = {"answer": "", "citations": []}
+            state.synthesis_result = {"answer": "", "citations": []}
             return state, TraceEvent(
                 agent=self.name, action="synthesize", result="No chunks to synthesize."
             )
 
-        evidence_text = "\n".join(
-            [f"[ID: {_evidence_id(c, i)}]\nText: {c.get('text', '')}" for i, c in enumerate(chunks)]
-        )
-        prompt = f"Evidence:\n{evidence_text}\n\nQuestion:\n{query}"
-
+        prompt = _build_prompt(query, chunks)
         response_text = await llm.generate(SYSTEM_PROMPT, prompt)
-        citations = [_citation_from_chunk(c) for c in chunks[:3]]
+        citations = [_citation_from_chunk(c) for c in chunks]
 
-        state["synthesis_result"] = {"answer": response_text, "citations": citations}
+        state.synthesis_result = {"answer": response_text, "citations": citations}
         return state, TraceEvent(agent=self.name, action="synthesize", result="Generated answer.")
 
-    async def execute_stream(self, state: dict[str, Any]) -> AsyncGenerator[dict[str, Any], None]:
+    async def execute_stream(self, state: QueryState) -> AsyncGenerator[dict[str, Any], None]:
         """Stream tokens from synthesis, yielding token, citations, and done events."""
-        query = state.get("query", "")
-        chunks = state.get("reranked_chunks", [])
+        query = state.rewritten_query or state.query
+        chunks = state.reranked_chunks
 
         if not chunks:
-            state["synthesis_result"] = {"answer": "", "citations": []}
-            yield {"type": "done", "data": state["synthesis_result"]}
+            state.synthesis_result = {"answer": "", "citations": []}
+            yield {"type": "done", "data": state.synthesis_result}
             return
 
-        evidence_text = "\n".join(
-            [f"[ID: {_evidence_id(c, i)}]\nText: {c.get('text', '')}" for i, c in enumerate(chunks)]
-        )
-        prompt = f"Evidence:\n{evidence_text}\n\nQuestion:\n{query}"
+        prompt = _build_prompt(query, chunks)
 
         response_text = ""
         async for token in llm.generate_stream(SYSTEM_PROMPT, prompt):
             response_text += token
             yield {"type": "token", "data": token}
 
-        citations = [_citation_from_chunk(c) for c in chunks[:3]]
+        citations = [_citation_from_chunk(c) for c in chunks]
         yield {"type": "citations", "data": [c.model_dump() for c in citations]}
 
-        state["synthesis_result"] = {
+        state.synthesis_result = {
             "answer": response_text,
             "citations": [c.model_dump() for c in citations],
         }
-        yield {"type": "done", "data": state["synthesis_result"]}
+        yield {"type": "done", "data": state.synthesis_result}

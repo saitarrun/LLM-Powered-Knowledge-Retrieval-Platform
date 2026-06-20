@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from sentence_transformers import SentenceTransformer
 
 from app.core.config import settings

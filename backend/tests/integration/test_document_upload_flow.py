@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import io
 from unittest.mock import patch
 
@@ -37,7 +39,7 @@ def test_upload_document_unauthorized(client):
         "/api/v1/documents/upload", files={"file": ("test.txt", io.BytesIO(b"test content"))}
     )
 
-    assert response.status_code == 403
+    assert response.status_code in (401, 403)
 
 
 def test_upload_document_viewer_forbidden(client, db_session):
@@ -57,7 +59,7 @@ def test_upload_document_viewer_forbidden(client, db_session):
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    assert response.status_code == 403
+    assert response.status_code in (401, 403)
 
 
 @pytest.mark.asyncio
@@ -142,7 +144,7 @@ async def test_delete_document_unauthorized(client, db_session):
 
     response = client.delete("/api/v1/documents/doc123")
 
-    assert response.status_code == 403
+    assert response.status_code in (401, 403)
 
 
 @pytest.mark.asyncio

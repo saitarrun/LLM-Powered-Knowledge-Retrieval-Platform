@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Celery application factory for Nexus background tasks.
 Configured to use Redis as both broker and backend.

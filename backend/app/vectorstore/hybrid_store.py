@@ -62,14 +62,18 @@ class HybridStore:
         = 2N tasks in flight instead of sequential.
         """
         async def _search_variation(variation: str) -> tuple[list[dict], list[dict]]:
-            embedding = await asyncio.to_thread(embedding_service.embed_one, variation)
+            # Use serialized async embed to prevent concurrent PyTorch CPU calls
+            embedding = await embedding_service.embed_one_async(variation)
             faiss_res, bm25_res = await asyncio.gather(
                 asyncio.to_thread(self._faiss.search, embedding, top_k),
                 asyncio.to_thread(self._bm25.search, variation, top_k),
             )
             return faiss_res, bm25_res
 
-        per_variation = await asyncio.gather(*(_search_variation(v) for v in query_variations))
+        # Run variations sequentially (not in parallel) to avoid concurrent embed calls
+        per_variation = []
+        for v in query_variations:
+            per_variation.append(await _search_variation(v))
 
         rrf_scores: dict[str, float] = {}
         chunk_metadata: dict[str, dict] = {}

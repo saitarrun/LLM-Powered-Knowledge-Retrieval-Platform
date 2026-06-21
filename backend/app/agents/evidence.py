@@ -21,7 +21,7 @@ class EvidenceAgent(BaseAgent):
         repo: ChunkRepository | None = None,
     ) -> None:
         logger.info(f"Loading CrossEncoder: {settings.RERANKING_MODEL}")
-        self.reranker = reranker or CrossEncoder(settings.RERANKING_MODEL)
+        self.reranker = reranker or CrossEncoder(settings.RERANKING_MODEL, device="cpu")
         self._repo = repo or chunk_repository
 
     async def execute(self, state: QueryState) -> tuple[QueryState, TraceEvent]:

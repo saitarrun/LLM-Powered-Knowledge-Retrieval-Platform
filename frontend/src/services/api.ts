@@ -1,13 +1,19 @@
+import { authHeader } from "./auth";
+
 export const API_URL = "/nexus-proxy";
 
 export const api = {
   API_URL,
+
   // Documents
   async getDocuments() {
     try {
-      const res = await fetch(`${API_URL}/documents/`);
+      const res = await fetch(`${API_URL}/documents/`, {
+        headers: { ...authHeader() },
+      });
       if (!res.ok) return [];
-      return res.json();
+      const data = await res.json();
+      return data.documents || [];
     } catch {
       return [];
     }
@@ -46,8 +52,11 @@ export const api = {
   async uploadDocument(file: File) {
     const formData = new FormData();
     formData.append("file", file);
+    // Explicitly do not set Content-Type header so browser sets boundary for multipart
+    const headers = { ...authHeader() };
     const res = await fetch(`${API_URL}/documents/upload/`, {
       method: "POST",
+      headers,
       body: formData,
     });
     return res.json();
@@ -71,6 +80,7 @@ export const api = {
   async deleteDocument(id: string) {
     const res = await fetch(`${API_URL}/documents/${id}/`, {
       method: "DELETE",
+      headers: { ...authHeader() },
     });
     return res.json();
   },
@@ -79,8 +89,8 @@ export const api = {
   async queryChat(query: string, top_k: number = 5) {
     const res = await fetch(`${API_URL}/chat/query/`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, top_k, use_hybrid_search: false, use_reranker: true }),
+      headers: { "Content-Type": "application/json", ...authHeader() },
+      body: JSON.stringify({ query, top_k }),
     });
     return res.json();
   },
@@ -88,7 +98,7 @@ export const api = {
   async sendFeedback(query_id: string, feedback: number) {
     const res = await fetch(`${API_URL}/chat/feedback`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeader() },
       body: JSON.stringify({ query_id, feedback }),
     });
     return res.json();
@@ -96,7 +106,9 @@ export const api = {
 
   // Settings
   async getSettings() {
-    const res = await fetch(`${API_URL}/settings/`);
+    const res = await fetch(`${API_URL}/settings/`, {
+      headers: { ...authHeader() },
+    });
     return res.json();
   },
 

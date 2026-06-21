@@ -30,10 +30,9 @@ class ContextCompressionAgent(BaseAgent):
             compressed_text = await llm.generate(SYSTEM_PROMPT, prompt, temperature=0.0, max_tokens=300)
             compressed_text = compressed_text.strip()
             
-            if compressed_text == "EMPTY" or not compressed_text:
-                chunk["text"] = ""
-            else:
+            if compressed_text and compressed_text.upper() != "EMPTY":
                 chunk["text"] = compressed_text
+            # If LLM says EMPTY or fails, keep original text — don't discard
         except Exception as e:
             logger.error(f"Compression failed for chunk: {e}")
         

@@ -1,186 +1,349 @@
 "use client";
 
-import React from "react";
-import { motion } from "framer-motion";
-import {
-  Cpu,
-  Zap,
-  Database,
-  Network,
-  ArrowRight,
-  Terminal,
-  ShieldCheck,
-  Activity,
-  ChevronRight,
-  Globe,
-  Fingerprint,
-  Search
-} from "lucide-react";
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { api } from "@/services/api";
+import React, { useState, useRef, useEffect, FormEvent } from "react";
+import { useSidebar } from "@/components/NavigationWrapper";
+import { authHeader } from "@/services/auth";
 
-export default function Home() {
-  const [stats, setStats] = useState({ documents: 0, indexed_chunks: 0 });
+type Citation = {
+  id?: string | number;
+  chunk_id?: string;
+  document_id?: string;
+  document_name?: string;
+  chunk_text?: string;
+  snippet?: string;
+  page?: string | number;
+};
+
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  citations?: Citation[];
+};
+
+type StreamEvent =
+  | { type: "token"; token?: string; data?: string }
+  | { type: "trace"; agent?: string; action?: string; result?: string }
+  | { type: "citations"; citations?: Citation[]; data?: Citation[] }
+  | { type: "error"; message?: string }
+  | { type: "done" };
+
+function parseSseEvents(buffer: string) {
+  const frames = buffer.split("\n\n");
+  const remainder = frames.pop() ?? "";
+
+  const events = frames
+    .map((frame) => {
+      const data = frame
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.replace(/^data:\s?/, ""))
+        .join("\n");
+
+      if (!data) return null;
+      try {
+        return JSON.parse(data) as StreamEvent;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean) as StreamEvent[];
+
+  return { events, remainder };
+}
+
+export default function ChatPage() {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [isIndexing, setIsIndexing] = useState(false);
+  const [modelName, setModelName] = useState<string>("Loading...");
+
+  const { toggle } = useSidebar();
+  const sectionRef = useRef<HTMLElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    api.getStatus().then(setStats);
+    fetch("/api/health", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.llm_model) {
+          // Show just the model slug, e.g. "nemotron-3-ultra-550b-a55b"
+          const slug = d.llm_model.split("/").pop()?.replace(/:.*$/, "") ?? d.llm_model;
+          setModelName(slug);
+        }
+      })
+      .catch(() => setModelName("Unknown"));
   }, []);
 
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages, isIndexing]);
+
+  useEffect(() => {
+    const handleNewChat = () => {
+      setMessages([]);
+      setQuery("");
+      setIsIndexing(false);
+    };
+    window.addEventListener("new-chat", handleNewChat);
+    return () => window.removeEventListener("new-chat", handleNewChat);
+  }, []);
+
+  const handleInput = () => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      const form = e.currentTarget.form;
+      if (form) form.requestSubmit();
+    }
+  };
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!query.trim() || loading) return;
+
+    const userMsg: ChatMessage = { role: "user", content: query };
+    setMessages((prev) => [...prev, userMsg]);
+    setQuery("");
+    setLoading(true);
+    setIsIndexing(true);
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+
+    try {
+      const response = await fetch("/nexus-proxy/chat/query/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader() },
+        body: JSON.stringify({ query: userMsg.content, top_k: 5 }),
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`Chat failed with status ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      const assistantMsg: ChatMessage = { role: "assistant", content: "", citations: [] };
+      setMessages((prev) => [...prev, assistantMsg]);
+
+      let pendingBuffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        pendingBuffer += decoder.decode(value, { stream: true });
+        const { events, remainder } = parseSseEvents(pendingBuffer);
+        pendingBuffer = remainder;
+
+        for (const event of events) {
+          if (event.type === "token") {
+            assistantMsg.content += event.token ?? event.data ?? "";
+            setMessages((prev) => {
+              const newMsgs = [...prev];
+              newMsgs[newMsgs.length - 1] = { ...assistantMsg };
+              return newMsgs;
+            });
+            setIsIndexing(false);
+          } else if (event.type === "citations") {
+            assistantMsg.citations = event.citations ?? event.data ?? [];
+            setMessages((prev) => {
+              const newMsgs = [...prev];
+              newMsgs[newMsgs.length - 1] = { ...assistantMsg };
+              return newMsgs;
+            });
+          } else if (event.type === "error") {
+            throw new Error(event.message || "Streaming failed");
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Chat error:", err);
+      const message = err instanceof Error ? err.message : "Connection failed";
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `Error: ${message}` },
+      ]);
+    } finally {
+      setLoading(false);
+      setIsIndexing(false);
+    }
+  };
+
   return (
-    <div className="max-w-7xl mx-auto space-y-32 pb-40">
-      {/* Hero Module: The Nexus Core */}
-      <section className="relative pt-20">
-        <div className="grid grid-cols-12 gap-12 items-center">
-          <div className="col-span-8 space-y-16">
-            <div className="space-y-6">
-              <motion.div 
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="flex items-center gap-4 text-secondary"
-              >
-                <Fingerprint size={28} className="animate-pulse-slow" />
-                <span className="label-md tracking-[0.8em] font-black uppercase">Multi-Agent RAG Platform v4.0</span>
-              </motion.div>
-              
-              <motion.h1 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="display-lg text-[6.5rem] leading-[0.9] text-on-surface tracking-tighter"
-              >
-                Orchestrate <br /> <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">Intelligence.</span>
-              </motion.h1>
-              
-              <motion.p 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.3 }}
-                className="text-2xl text-on-surface-variant max-w-2xl font-medium leading-relaxed opacity-60"
-              >
-                Enterprise-grade knowledge retrieval platform powered by a dynamic swarm of specialized agents, GraphRAG topology, and deterministic validation.
-              </motion.p>
-            </div>
-
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.4 }}
-              className="flex gap-8"
-            >
-              <Link href="/chat" className="btn-primary min-w-[320px] h-16 flex items-center justify-center gap-4 shadow-[0_20px_60px_rgba(27,28,26,0.15)] group">
-                Initialize Swarm
-                <ArrowRight size={20} className="group-hover:translate-x-2 transition-transform" />
-              </Link>
-              <Link href="/documents" className="px-12 py-5 border-2 border-on-surface/5 rounded-full font-display font-black tracking-widest uppercase hover:bg-surface-container transition-all flex items-center gap-4 group h-16">
-                Knowledge Base
-                <Database size={18} className="text-secondary group-hover:scale-110 transition-transform" />
-              </Link>
-            </motion.div>
-          </div>
-
-          <div className="col-span-4 relative h-[600px] flex items-center justify-center">
-             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_#fdd029_0%,_transparent_70%)] opacity-[0.04]" />
-             <div className="relative group">
-                <motion.div 
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
-                  className="w-96 h-96 border border-dashed border-on-surface/10 rounded-full flex items-center justify-center"
-                >
-                   <div className="w-80 h-80 border border-secondary/20 rounded-full flex items-center justify-center animate-pulse-slow">
-                      <div className="w-64 h-64 bg-primary rounded-full flex items-center justify-center shadow-premium-dark">
-                         <Zap size={64} className="text-secondary animate-pulse" />
-                      </div>
-                   </div>
-                </motion.div>
-                {/* Orbital Sensors */}
-                <OrbitalSensor icon={Search} label="RETRIEVAL" position="top-0 left-0" />
-                <OrbitalSensor icon={Network} label="GRAPH" position="top-0 right-0" />
-                <OrbitalSensor icon={ShieldCheck} label="VALIDATION" position="bottom-0 left-0" />
-                <OrbitalSensor icon={Globe} label="WEB SEARCH" position="bottom-0 right-0" />
-             </div>
+    <main className="flex-1 min-h-0 flex flex-col relative bg-surface-container-lowest">
+      {/* Top Header */}
+      <header className="w-full h-16 sticky top-0 bg-surface/80 dark:bg-surface-dim/80 backdrop-blur-xl border-b border-outline-variant/30 flex justify-between items-center px-lg z-50">
+        <div className="flex items-center gap-md">
+          <span
+            className="material-symbols-outlined md:hidden cursor-pointer text-on-surface"
+            onClick={toggle}
+          >
+            menu
+          </span>
+          <div className="flex flex-col">
+            <span className="font-label-sm text-label-sm text-outline uppercase tracking-tighter">Current Model</span>
+            <span className="font-headline-sm text-headline-sm font-semibold text-primary">{modelName}</span>
           </div>
         </div>
-      </section>
+        <button className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-variant/50 transition-colors text-on-surface-variant">
+          <span className="material-symbols-outlined">account_circle</span>
+        </button>
+      </header>
 
-      {/* Stats Module: The Data Horizon */}
-      <section className="bg-primary text-secondary p-1 relative overflow-hidden shadow-premium-dark">
-         <div className="grid grid-cols-1 md:grid-cols-4 gap-1">
-            <StatModule label="Vector Space" value={stats.indexed_chunks.toLocaleString()} metric="TOTAL CHUNKS" />
-            <StatModule label="Knowledge Assets" value={stats.documents} metric="CATALOGED FILES" />
-            <StatModule label="Neural Links" value="14.2k" metric="GRAPH TRIPLES" />
-            <StatModule label="System Uptime" value="99.9%" metric="STABILITY" />
-         </div>
-      </section>
-
-      {/* Feature Architecture: The Swarm Principles */}
-      <section className="space-y-20">
-         <div className="flex items-center gap-6">
-            <div className="w-20 h-px bg-secondary" />
-            <h2 className="label-md tracking-[0.6em] text-on-surface font-black uppercase text-xl">Core Architecture</h2>
-         </div>
-
-         <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
-            <FeatureCard 
-               icon={Cpu}
-               title="Multi-Agent Swarm"
-               desc="Coordinated task decomposition across specialized agents: Orion (Planning), Critic (Verification), and Synthesis."
-            />
-            <FeatureCard 
-               icon={Network}
-               title="GraphRAG Topology"
-               desc="Implicit knowledge mapping via Neo4j, enabling higher-order reasoning across disconnected document segments."
-            />
-            <FeatureCard 
-               icon={ShieldCheck}
-               title="Trusted Validation"
-               desc="Deterministic verification layer that cross-references all LLM outputs with retrieved source citations."
-            />
-         </div>
-      </section>
-    </div>
-  );
-}
-
-function OrbitalSensor({ icon: Icon, label, position }: { icon: React.ComponentType<{ size?: number; className?: string }>; label: string; position: string }) {
-  return (
-    <div className={`absolute ${position} group-hover:scale-110 transition-transform duration-700 pointer-events-none`}>
-       <div className="p-4 bg-surface shadow-premium border border-on-surface/5 rounded-2xl flex items-center gap-3">
-          <Icon size={16} className="text-secondary" />
-          <span className="label-sm tracking-widest text-on-surface/40 uppercase text-[9px] font-bold">{label}</span>
-       </div>
-    </div>
-  );
-}
-
-function StatModule({ label, value, metric }: { label: string; value: string | number; metric: string }) {
-  return (
-    <div className="bg-primary p-12 flex flex-col gap-6 group hover:bg-neutral-900 transition-colors">
-       <span className="label-sm opacity-40 tracking-[0.4em] font-black group-hover:text-secondary transition-colors">{label}</span>
-       <div className="space-y-1">
-          <h4 className="text-6xl font-display font-medium text-on-primary-fixed">{value}</h4>
-          <p className="label-sm text-secondary font-black tracking-widest text-[10px]">{metric}</p>
-       </div>
-    </div>
-  );
-}
-
-function FeatureCard({ icon: Icon, title, desc }: { icon: React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>; title: string; desc: string }) {
-  return (
-    <div className="p-12 bg-surface shadow-[0_4px_30px_rgba(18,18,18,0.03)] border-t-2 border-primary-container group hover:-translate-y-4 transition-all duration-700 min-h-[360px] flex flex-col justify-between">
-       <div className="space-y-8">
-          <div className="w-16 h-16 bg-surface-container-low flex items-center justify-center rounded-3xl group-hover:bg-secondary transition-colors duration-700">
-             <Icon size={28} className="text-primary group-hover:text-primary transition-colors" strokeWidth={1} />
+      {/* Chat Messages Canvas */}
+      <section ref={sectionRef} className="flex-1 min-h-0 overflow-y-auto message-scroll">
+        {messages.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center px-md text-center space-y-6 opacity-60">
+            <span className="material-symbols-outlined text-6xl text-primary animate-pulse-subtle">
+              auto_awesome
+            </span>
+            <div>
+              <h3 className="font-headline-md text-headline-md font-bold text-on-surface">
+                Synchronize with Aether
+              </h3>
+              <p className="text-body-lg text-outline mt-2">
+                Enter your query below to retrieve context from the Knowledge Base.
+              </p>
+            </div>
           </div>
-          <div className="space-y-4">
-             <h3 className="headline-md tracking-tight group-hover:text-primary transition-colors">{title}</h3>
-             <p className="body-lg opacity-40 leading-relaxed font-medium">{desc}</p>
+        ) : (
+          <div className="max-w-[800px] mx-auto flex flex-col gap-xl px-md py-xl">
+            <div className="flex items-center justify-center gap-md opacity-40 py-md">
+              <div className="h-[1px] flex-1 bg-outline-variant" />
+              <span className="font-label-sm text-label-sm uppercase tracking-widest">Today</span>
+              <div className="h-[1px] flex-1 bg-outline-variant" />
+            </div>
+
+            {messages.map((msg, index) => (
+                <div
+                  key={index}
+                  className={`flex flex-col gap-sm group ${
+                    msg.role === "user" ? "items-end" : "items-start"
+                  }`}
+                >
+                  {msg.role === "assistant" && (
+                    <div className="flex items-center gap-sm mb-xs">
+                      <div className="w-6 h-6 rounded bg-primary-container flex items-center justify-center">
+                        <span
+                          className="material-symbols-outlined text-[14px] text-on-primary-container"
+                          style={{ fontVariationSettings: "'FILL' 1" }}
+                        >
+                          smart_toy
+                        </span>
+                      </div>
+                      <span className="font-label-md text-label-md font-semibold text-primary">
+                        Aether Assistant
+                      </span>
+                    </div>
+                  )}
+
+                  <div
+                    className={`p-md rounded-xl max-w-[85%] shadow-sm border border-outline-variant/10 ${
+                      msg.role === "user"
+                        ? "bg-surface-container-low rounded-tr-xs"
+                        : "bg-white ai-border-accent rounded-tl-xs"
+                    }`}
+                  >
+                    <p className="text-body-lg text-on-surface leading-relaxed whitespace-pre-wrap">
+                      {msg.content}
+                    </p>
+
+                    {msg.role === "assistant" && !!msg.citations?.length && (
+                      <div className="mt-xl pt-md border-t border-outline-variant/20">
+                        <span className="text-label-sm font-label-sm text-outline uppercase tracking-wider block mb-sm">
+                          Sources Found
+                        </span>
+                        <div className="flex flex-wrap gap-sm">
+                          {msg.citations.map((cit, ci) => (
+                            <a
+                              key={ci}
+                              className="flex items-center gap-xs px-md py-xs bg-surface-container-low hover:bg-surface-container text-primary rounded-full border border-outline-variant/30 transition-colors"
+                              href="#"
+                              onClick={(e) => e.preventDefault()}
+                            >
+                              <span className="material-symbols-outlined text-[14px]">description</span>
+                              <span className="font-label-sm truncate max-w-[150px]">
+                                {cit.document_name || "Reference"}
+                              </span>
+                              <span className="text-[10px] font-label-md bg-secondary-fixed text-on-secondary-fixed px-1.5 rounded">
+                                {cit.page ? `Page ${cit.page}` : "Doc"}
+                              </span>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+            {isIndexing && (
+              <div className="flex items-center gap-md p-md bg-surface-variant/20 rounded-xl border border-dashed border-primary/20 max-w-fit animate-pulse-subtle">
+                <div className="relative flex items-center justify-center">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-secondary-fixed-dim opacity-75 animate-ping" />
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-secondary-fixed-dim" />
+                </div>
+                <span className="font-label-md text-label-md text-on-surface-variant italic">
+                  Retrieving and indexing knowledge base...
+                </span>
+              </div>
+            )}
+
           </div>
-       </div>
-       <div className="pt-8 border-t border-on-surface/5 flex items-center gap-3 text-secondary opacity-0 group-hover:opacity-100 transition-opacity">
-          <span className="label-sm font-black tracking-widest">Explore Protocol</span>
-          <ChevronRight size={14} />
-       </div>
-    </div>
+        )}
+      </section>
+
+      {/* Bottom Chat Input Form */}
+      <footer className="p-md md:pb-lg">
+        <div className="max-w-[800px] mx-auto relative">
+          <form
+            onSubmit={handleSubmit}
+            className="bg-white rounded-3xl shadow-lg border border-outline-variant/30 p-sm pl-md flex items-end gap-sm focus-within:ring-2 focus-within:ring-secondary-fixed-dim/50 transition-all"
+          >
+            <textarea
+              ref={textareaRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onInput={handleInput}
+              onKeyDown={handleKeyPress}
+              className="flex-1 bg-transparent border-none focus:ring-0 text-body-lg py-2 max-h-48 overflow-y-auto resize-none p-0 outline-none placeholder-outline-variant"
+              placeholder="Ask Aether anything..."
+              rows={1}
+            />
+            <button
+              type="submit"
+              disabled={loading || !query.trim()}
+              className="w-10 h-10 mb-0.5 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary/90 transition-all active:scale-95 shadow-md shadow-primary/20 disabled:opacity-30 disabled:scale-100"
+            >
+              <span
+                className="material-symbols-outlined"
+                style={{ fontVariationSettings: "'FILL' 1" }}
+              >
+                send
+              </span>
+            </button>
+          </form>
+          <div className="mt-xs text-center">
+            <p className="text-label-sm text-outline opacity-60 text-[11px]">
+              Aether AI can make mistakes. Verify important information.
+            </p>
+          </div>
+        </div>
+      </footer>
+
+      <div className="absolute -right-64 -top-64 w-[500px] h-[500px] bg-secondary-fixed/10 blur-[120px] rounded-full pointer-events-none -z-10" />
+      <div className="absolute -left-64 -bottom-64 w-[500px] h-[500px] bg-primary-fixed/20 blur-[120px] rounded-full pointer-events-none -z-10" />
+    </main>
   );
 }

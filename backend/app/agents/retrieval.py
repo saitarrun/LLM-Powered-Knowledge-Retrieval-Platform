@@ -29,23 +29,27 @@ class RetrievalAgent(BaseAgent):
             )
 
         try:
-            candidates_task = self._store.search_multi(variations, top_k=fetch_k)
-            graph_task = graph_extractor.query_graph(query)
-            
-            candidates, graph_results = await asyncio.gather(candidates_task, graph_task)
-            
-            for gr in graph_results:
-                candidates.append({
-                    "score": 1.0,
-                    "metadata": {"chunk_id": "graph_node"},
-                    "text": f"Knowledge Graph Context: {gr}"
-                })
+            candidates = await self._store.search_multi(variations, top_k=fetch_k)
         except Exception as e:
-            logger.error(f"Retrieval error: {e}")
+            logger.error(f"Vector retrieval error: {e}")
             state.retrieved_candidates = []
             return state, TraceEvent(
                 agent=self.name, action="retrieve", result=f"Retrieval failed: {e}"
             )
+
+        # Graph retrieval is best-effort — skip if Neo4j is unavailable or slow
+        try:
+            graph_results = await asyncio.wait_for(
+                graph_extractor.query_graph(query), timeout=8.0
+            )
+            for gr in graph_results:
+                candidates.append({
+                    "score": 1.0,
+                    "metadata": {"chunk_id": "graph_node"},
+                    "text": f"Knowledge Graph Context: {gr}",
+                })
+        except Exception as e:
+            logger.warning(f"Graph retrieval skipped: {e}")
 
         state.retrieved_candidates = candidates
         logger.info(

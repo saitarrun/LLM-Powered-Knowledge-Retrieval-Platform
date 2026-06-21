@@ -155,10 +155,10 @@ async def test_delete_document_success(client, curator_token, db_session):
     db_session.add(doc)
     db_session.commit()
 
-    with patch("app.vectorstore.faiss_store.FaissStore"):
-        response = client.delete(
-            "/api/v1/documents/doc123", headers={"Authorization": f"Bearer {curator_token}"}
-        )
+    # hybrid_store is already mocked globally in conftest.py
+    response = client.delete(
+        "/api/v1/documents/doc123", headers={"Authorization": f"Bearer {curator_token}"}
+    )
 
     assert response.status_code == 200
     data = response.json()

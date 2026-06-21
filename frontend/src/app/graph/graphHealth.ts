@@ -1,4 +1,42 @@
-export function normalizeGraphPayload(payload) {
+export interface GraphNode {
+  id: string;
+  label?: string;
+  type?: string;
+  x?: number;
+  y?: number;
+}
+
+export interface GraphLink {
+  source: string;
+  target: string;
+  type?: string;
+}
+
+export interface GraphHealth {
+  status?: string;
+  neo4j_available?: boolean;
+  node_count?: number;
+  relationship_count?: number;
+  document_count?: number;
+  chunk_count?: number;
+  entity_count?: number;
+  disconnected_document_count?: number;
+  partial_extraction?: boolean;
+}
+
+export interface GraphPayload {
+  nodes: GraphNode[];
+  links: GraphLink[];
+  health: GraphHealth;
+}
+
+export interface HealthState {
+  status: "unavailable" | "partial" | "empty" | "healthy";
+  title: string;
+  message: string;
+}
+
+export function normalizeGraphPayload(payload: Partial<GraphPayload> | null | undefined): GraphPayload {
   return {
     nodes: Array.isArray(payload?.nodes) ? payload.nodes : [],
     links: Array.isArray(payload?.links) ? payload.links : [],
@@ -6,7 +44,7 @@ export function normalizeGraphPayload(payload) {
   };
 }
 
-export function getGraphHealthState(graph) {
+export function getGraphHealthState(graph: GraphPayload): HealthState {
   const normalized = normalizeGraphPayload(graph);
   const health = normalized.health;
 
@@ -41,7 +79,7 @@ export function getGraphHealthState(graph) {
   };
 }
 
-export function getGraphNodeColor(node) {
+export function getGraphNodeColor(node: GraphNode): string {
   switch (node?.type) {
     case "document":
       return "#2563eb";
@@ -56,7 +94,7 @@ export function getGraphNodeColor(node) {
   }
 }
 
-export function getGraphLinkColor(link) {
+export function getGraphLinkColor(link: GraphLink): string {
   if (link?.type === "HAS_CHUNK") return "#93c5fd";
   if (link?.type === "MENTIONS") return "#86efac";
   return "#d6d3d1";

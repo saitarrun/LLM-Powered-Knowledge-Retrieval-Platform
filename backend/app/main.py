@@ -7,15 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 
-# Initialize Arize Phoenix for observability
-try:
-    import phoenix as px
-    from openinference.instrumentation.langchain import LangChainInstrumentor
-    
-    px.launch_app()
-    LangChainInstrumentor().instrument()
-except ImportError:
-    print("Warning: arize-phoenix or openinference not installed, tracing disabled.")
+# Arize Phoenix observability — disabled to avoid gRPC port conflicts in local dev
+# import phoenix as px
+# from openinference.instrumentation.langchain import LangChainInstrumentor
+# px.launch_app()
+# LangChainInstrumentor().instrument()
 
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 os.makedirs(
@@ -29,6 +25,29 @@ from app.db.database import engine  # noqa: E402
 from app.db.models import Base  # noqa: E402
 
 Base.metadata.create_all(bind=engine)
+
+# ── Seed default admin user for local dev ──────────────────────────────────────
+def _seed_default_user() -> None:
+    """Create a default admin user if no users exist (dev convenience)."""
+    from app.core.auth import hash_password
+    from app.db.database import SessionLocal
+    from app.db.models import User, UserRole
+
+    db = SessionLocal()
+    try:
+        if db.query(User).count() == 0:
+            admin = User(
+                email="admin@nexus.dev",
+                hashed_password=hash_password("admin"),
+                role=UserRole.CURATOR,
+            )
+            db.add(admin)
+            db.commit()
+            print("✅ Default user created: admin@nexus.dev / admin")
+    finally:
+        db.close()
+
+_seed_default_user()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -61,7 +80,12 @@ app.include_router(openai_compatible.router, prefix="/v1")
 @app.get("/api/health")
 async def health_check():
     """Primary health check endpoint."""
-    return {"status": "healthy", "environment": settings.ENVIRONMENT}
+    return {
+        "status": "healthy",
+        "environment": settings.ENVIRONMENT,
+        "llm_model": settings.LLM_MODEL,
+        "llm_provider": settings.LLM_PROVIDER,
+    }
 
 
 if __name__ == "__main__":

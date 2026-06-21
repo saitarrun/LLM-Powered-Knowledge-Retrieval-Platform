@@ -11,7 +11,6 @@ function ApproveContent({ params }: { params: { slug: string[] } }) {
   const handleAction = async (action: "approve" | "reject") => {
     setLoading(true);
     try {
-      // Proxy to n8n webhook
       const res = await fetch(`/n8n-proxy/approve/${params.slug.join("/")}?action=${action}`, {
         method: "POST"
       });
@@ -119,7 +118,7 @@ function ApproveContent({ params }: { params: { slug: string[] } }) {
                       <h1 className="text-4xl font-black text-slate-900 tracking-tighter">Authorization Successful</h1>
                       <p className="text-base text-slate-500 font-medium tracking-tight">The document has been securely routed to the vector indexing pipeline.</p>
                     </div>
-                    <button onClick={() => window.close()} className="btn-secondary px-12 py-5 rounded-full mt-4">Close Window</button>
+                    <button onClick={() => window.close()} className="bg-slate-900 text-white px-12 py-5 rounded-full mt-4">Close Window</button>
                   </div>
                 </motion.div>
               ) : (
@@ -145,7 +144,7 @@ function ApproveContent({ params }: { params: { slug: string[] } }) {
                       <h1 className="text-4xl font-black text-slate-900 tracking-tighter">Ingestion Rejected</h1>
                       <p className="text-base text-slate-500 font-medium tracking-tight">The document payload has been purged from temporary storage.</p>
                     </div>
-                    <button onClick={() => window.close()} className="btn-secondary px-12 py-5 rounded-full mt-4">Close Window</button>
+                    <button onClick={() => window.close()} className="bg-slate-900 text-white px-12 py-5 rounded-full mt-4">Close Window</button>
                   </div>
                 </motion.div>
               )}

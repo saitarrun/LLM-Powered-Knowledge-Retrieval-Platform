@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from pydantic_settings import BaseSettings
+
+# Resolve .env from the project root (one level above this backend/ directory)
+_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
 
 
 class Settings(BaseSettings):
@@ -29,9 +33,10 @@ class Settings(BaseSettings):
     # Models
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
     RERANKING_MODEL: str = os.getenv("RERANKING_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
-    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openai")
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openrouter")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "nvidia/nemotron-3-super-120b-a12b:free")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
     LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "http://localhost:11434")
 
     # Retrieval Limits
@@ -41,7 +46,9 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 200
 
     class Config:
-        env_file = ".env"
+        env_file = str(_ENV_FILE)
+        env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 settings = Settings()

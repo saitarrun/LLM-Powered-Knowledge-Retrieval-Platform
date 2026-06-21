@@ -15,6 +15,11 @@ class LLMProvider:
                 api_key="ollama",
                 base_url=settings.LLM_BASE_URL,
             )
+        elif settings.LLM_PROVIDER == "openrouter":
+            self.client = AsyncOpenAI(
+                api_key=settings.OPENROUTER_API_KEY or settings.OPENAI_API_KEY,
+                base_url="https://openrouter.ai/api/v1",
+            )
         else:
             self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         self.model = settings.LLM_MODEL

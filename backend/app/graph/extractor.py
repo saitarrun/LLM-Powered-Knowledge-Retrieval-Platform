@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 
@@ -15,7 +16,12 @@ neo4j_password = os.getenv("NEO4J_PASSWORD", "password")
 
 class GraphExtractor:
     def __init__(self):
-        self.driver = AsyncGraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
+        self.driver = AsyncGraphDatabase.driver(
+            neo4j_uri,
+            auth=(neo4j_user, neo4j_password),
+            connection_timeout=3.0,
+            max_connection_lifetime=300,
+        )
 
     async def extract_and_store(self, text: str, source_id: str):
         if not llm.client:
@@ -66,8 +72,21 @@ class GraphExtractor:
                     except Exception as e:
                         logger.warning(f"Neo4j merge error: {e}")
 
+    async def _neo4j_reachable(self) -> bool:
+        host, port = neo4j_uri.replace("bolt://", "").split(":") if ":" in neo4j_uri.replace("bolt://", "") else (neo4j_uri.replace("bolt://", ""), "7687")
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, int(port)), timeout=1.0
+            )
+            writer.close()
+            return True
+        except Exception:
+            return False
+
     async def query_graph(self, query: str):
         if not llm.client:
+            return []
+        if not await self._neo4j_reachable():
             return []
         prompt = f"Extract the main subject entity from this query: '{query}'. Return ONLY the entity string, nothing else."
         entity = await llm.generate("You extract single noun subjects from queries.", prompt)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -88,9 +89,9 @@ class IngestionPipeline:
 
             logger.info(f"Created {len(db_chunks)} DB chunk records")
 
-            # 4. Generate embeddings
+            # 4. Generate embeddings (offloaded to thread pool — encode() blocks the event loop)
             texts = [c.text for c in db_chunks]
-            embeddings = embedding_service.embed(texts)
+            embeddings = await asyncio.to_thread(embedding_service.embed, texts)
             logger.info(f"Generated {len(embeddings)} embeddings")
 
             # 5. Index to HybridStore (FAISS + BM25) unless approval required

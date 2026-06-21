@@ -1,20 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
 async function proxyRequest(req: NextRequest, slug: string[]) {
-  const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8001";
+  const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
   const searchParams = req.nextUrl.searchParams.toString();
   const query = searchParams ? `?${searchParams}` : "";
   
-  // The frontend calls /nexus-proxy/..., but the backend expects /api/...
-  // Strip trailing slash to prevent FastAPI's 307 redirect which kills POST bodies
   const path = slug.join("/").replace(/\/$/, "");
-  const targetUrl = `${BACKEND_URL}/api/${path}${query}`;
+  const targetUrl = `${BACKEND_URL}/api/v1/${path}${query}`;
   
   try {
     const config: RequestInit = {
       method: req.method,
       headers: {
         "Content-Type": req.headers.get("content-type") || "application/json",
+        ...(req.headers.get("authorization") ? { "Authorization": req.headers.get("authorization")! } : {}),
       },
       redirect: "follow",
     };
@@ -31,7 +30,6 @@ async function proxyRequest(req: NextRequest, slug: string[]) {
     responseHeaders.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     responseHeaders.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
-    // For Server-Sent Events stream
     if (res.headers.get("content-type")?.includes("text/event-stream") && res.body) {
         responseHeaders.set("Cache-Control", "no-cache");
         responseHeaders.set("Connection", "keep-alive");

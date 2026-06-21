@@ -33,6 +33,35 @@ sys.modules["faiss.swigfaiss"] = MagicMock()
 sys.modules["langchain_text_splitters"] = MagicMock()
 sys.modules["langchain_text_splitters.RecursiveCharacterTextSplitter"] = MagicMock()
 
+# Mock FaissStore and hybrid_store at the module level before app.main is imported.
+# hybrid_store.py instantiates these at import time, which trips on isinstance() with
+# a MagicMock faiss type. Replacing the whole module object avoids that.
+_mock_faiss_store_instance = MagicMock()
+_mock_faiss_store_instance.search.return_value = [
+    {"score": 0.95, "metadata": {"chunk_id": "chunk1"}},
+    {"score": 0.85, "metadata": {"chunk_id": "chunk2"}},
+]
+_mock_faiss_store_instance.add_embeddings.return_value = None
+_mock_faiss_store_instance.remove.return_value = None
+_mock_faiss_store_instance.dimension = 384
+
+_mock_faiss_store_cls = MagicMock(return_value=_mock_faiss_store_instance)
+
+_faiss_store_mod = MagicMock()
+_faiss_store_mod.FaissStore = _mock_faiss_store_cls
+sys.modules["app.vectorstore.faiss_store"] = _faiss_store_mod
+
+_mock_hybrid_store_instance = MagicMock()
+_mock_hybrid_store_instance.search.return_value = []
+_mock_hybrid_store_instance.search_multi.return_value = []
+_mock_hybrid_store_instance.add.return_value = None
+_mock_hybrid_store_instance.remove.return_value = None
+
+_hybrid_store_mod = MagicMock()
+_hybrid_store_mod.hybrid_store = _mock_hybrid_store_instance
+_hybrid_store_mod.HybridStore = MagicMock(return_value=_mock_hybrid_store_instance)
+sys.modules["app.vectorstore.hybrid_store"] = _hybrid_store_mod
+
 # Now we can safely import app modules
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
@@ -118,14 +147,12 @@ def mock_llm_provider():
 
 @pytest.fixture
 def mock_faiss_store():
-    """Mock FAISS store."""
-    with patch("app.vectorstore.faiss_store.FaissStore") as vectorstore_mock:
-        instance = MagicMock()
-        instance.search.return_value = [
-            {"score": 0.95, "metadata": {"chunk_id": "chunk1"}},
-            {"score": 0.85, "metadata": {"chunk_id": "chunk2"}},
-        ]
-        instance.add_embeddings.return_value = None
-        instance.remove.return_value = None
-        vectorstore_mock.return_value = instance
-        yield instance
+    """Mock FAISS store via the already-mocked hybrid_store module."""
+    instance = _mock_faiss_store_instance
+    instance.search.return_value = [
+        {"score": 0.95, "metadata": {"chunk_id": "chunk1"}},
+        {"score": 0.85, "metadata": {"chunk_id": "chunk2"}},
+    ]
+    instance.add_embeddings.return_value = None
+    instance.remove.return_value = None
+    yield instance

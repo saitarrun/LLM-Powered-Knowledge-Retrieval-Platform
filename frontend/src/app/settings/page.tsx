@@ -1,102 +1,122 @@
 "use client";
 
-import React from "react";
-import { motion } from "framer-motion";
-import { Settings } from "lucide-react";
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
+import { api } from "@/services/api";
+import { useSidebar } from "@/components/NavigationWrapper";
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<{ reranking_model?: string; default_top_k?: number; chunk_size?: number; [key: string]: string | number | undefined }>({});
+  const [settings, setSettings] = useState<{
+    reranking_model?: string;
+    default_top_k?: number;
+    chunk_size?: number;
+    [key: string]: string | number | undefined;
+  }>({});
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const { toggle } = useSidebar();
 
   useEffect(() => {
-    fetch("/nexus-proxy/settings")
-      .then(res => res.json())
-      .then(data => {
-        setSettings(data);
-        setLoading(false);
-      });
+    api.getSettings().then((data) => {
+      setSettings(data || {});
+      setLoading(false);
+    });
   }, []);
 
   const handleUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    await fetch("/nexus-proxy/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings)
-    });
-    alert("System architecture synchronized.");
+    setSaving(true);
+    try {
+      await api.updateSettings(settings as Record<string, unknown>);
+      alert("System architecture synchronized successfully.");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to synchronize settings.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  if (loading) return null;
-
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="max-w-6xl mx-auto space-y-20 pb-40"
-    >
-      <div className="flex items-center justify-between pb-12 border-b border-on-surface/5">
-        <div className="space-y-4">
-          <div className="flex items-center gap-4 text-primary">
-            <Settings size={32} className="animate-pulse-slow" />
-            <span className="label-md tracking-[0.8em] font-black uppercase">System Protocols</span>
-          </div>
-          <h1 className="display-lg text-on-surface tracking-tighter">Architecture Tuning</h1>
+    <main className="h-full flex flex-col relative overflow-hidden bg-surface-container-lowest">
+      {/* Top Bar */}
+      <header className="w-full h-16 sticky top-0 bg-surface/80 backdrop-blur-xl border-b border-outline-variant/30 flex justify-between items-center px-lg z-40">
+        <div className="flex items-center gap-sm">
+          <span 
+            className="material-symbols-outlined md:hidden cursor-pointer text-on-surface mr-2" 
+            onClick={toggle}
+          >
+            menu
+          </span>
+          <span className="material-symbols-outlined text-primary">settings</span>
+          <h2 className="font-headline-sm text-headline-sm font-semibold text-on-surface">Settings</h2>
         </div>
-      </div>
+      </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-20">
-        <form onSubmit={handleUpdate} className="lg:col-span-8 space-y-24">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
-            <div className="space-y-8">
-              <label className="label-sm text-on-surface tracking-[0.5em] ml-4 block opacity-30 font-black">NEURAL RERANKER</label>
-              <div className="relative group">
-                <input 
-                  type="text" 
-                  className="w-full bg-surface-container-high/40 border-2 border-transparent rounded-[2rem] px-12 py-8 text-2xl font-bold text-on-surface placeholder-on-surface/10 focus:bg-surface-container-lowest focus:border-primary/40 focus:shadow-[0_0_80px_rgba(235,0,0,0.06)] outline-none transition-all duration-700 shadow-inner"
+      {/* Page Content */}
+      <div className="flex-1 overflow-y-auto p-lg custom-scrollbar max-w-[800px] mx-auto w-full py-xl">
+        <div className="mb-xl">
+          <h3 className="font-headline-md text-headline-md text-on-surface mb-1">Architecture Tuning</h3>
+          <p className="text-body-md text-outline">Configure your RAG engine properties, chunk bounds, and rerank parameters.</p>
+        </div>
+
+        {loading ? (
+          <div className="text-center py-20 opacity-50">
+            <span className="animate-pulse-soft">Loading system parameters...</span>
+          </div>
+        ) : (
+          <form onSubmit={handleUpdate} className="space-y-xl">
+            <div className="space-y-lg">
+              {/* Reranking Model */}
+              <div className="flex flex-col gap-sm">
+                <label className="font-label-md text-label-md text-outline uppercase tracking-wider">NEURAL RERANKER</label>
+                <input
+                  type="text"
+                  className="w-full bg-surface-container border border-outline-variant/20 rounded-xl px-md py-3 text-body-lg text-on-surface focus:ring-2 focus:ring-secondary-container transition-all"
                   value={settings.reranking_model || ""}
-                  onChange={(e) => setSettings({...settings, reranking_model: e.target.value})}
-                  placeholder="Configure Reranking Engine..."
+                  onChange={(e) => setSettings({ ...settings, reranking_model: e.target.value })}
+                  placeholder="Enter Reranking Model..."
                 />
+                <span className="text-xs text-outline italic">CROSS-ENCODING MODEL OPTIMIZATION</span>
               </div>
-              <p className="label-sm text-primary-surface opacity-40 ml-6 italic tracking-[0.3em]">CROSS-ENCODING OPTIMIZED</p>
-            </div>
 
-            <div className="space-y-8">
-              <label className="label-sm text-on-surface tracking-[0.5em] ml-4 block opacity-30 font-black">TOP-K RETRIEVAL</label>
-              <div className="relative group">
-                <input 
-                  type="number" 
-                  className="w-full bg-surface-container-high/40 border-2 border-transparent rounded-[2rem] px-12 py-8 text-2xl font-bold text-on-surface focus:bg-surface-container-lowest focus:border-primary/40 outline-none transition-all duration-700 shadow-inner"
+              {/* Top-K Retrieval */}
+              <div className="flex flex-col gap-sm">
+                <label className="font-label-md text-label-md text-outline uppercase tracking-wider">TOP-K RETRIEVAL</label>
+                <input
+                  type="number"
+                  className="w-full bg-surface-container border border-outline-variant/20 rounded-xl px-md py-3 text-body-lg text-on-surface focus:ring-2 focus:ring-secondary-container transition-all"
                   value={settings.default_top_k || 5}
-                  onChange={(e) => setSettings({...settings, default_top_k: Number(e.target.value)})}
+                  onChange={(e) => setSettings({ ...settings, default_top_k: Number(e.target.value) })}
                 />
+                <span className="text-xs text-outline italic">NUMBER OF SEMANTIC CLUSTERS RETRIEVED PER PROMPT</span>
               </div>
-              <p className="label-sm text-on-surface-variant opacity-30 ml-6 tracking-[0.4em]">SEMANTIC CLUSTERS PER QUERY</p>
-            </div>
 
-            <div className="space-y-8">
-              <label className="label-sm text-on-surface tracking-[0.5em] ml-4 block opacity-30 font-black">NEURAL CHUNK SIZE</label>
-              <div className="relative group">
-                <input 
-                  type="number" 
-                  className="w-full bg-surface-container-high/40 border-2 border-transparent rounded-[2rem] px-12 py-8 text-2xl font-bold text-on-surface focus:bg-surface-container-lowest focus:border-primary/40 outline-none transition-all duration-700 shadow-inner"
+              {/* Chunk Size */}
+              <div className="flex flex-col gap-sm">
+                <label className="font-label-md text-label-md text-outline uppercase tracking-wider">NEURAL CHUNK SIZE</label>
+                <input
+                  type="number"
+                  className="w-full bg-surface-container border border-outline-variant/20 rounded-xl px-md py-3 text-body-lg text-on-surface focus:ring-2 focus:ring-secondary-container transition-all"
                   value={settings.chunk_size || 1000}
-                  onChange={(e) => setSettings({...settings, chunk_size: Number(e.target.value)})}
+                  onChange={(e) => setSettings({ ...settings, chunk_size: Number(e.target.value) })}
                 />
+                <span className="text-xs text-outline italic">CHARACTER BOUNDS PER EMBEDDING INDEX</span>
               </div>
-              <p className="label-sm text-on-surface-variant opacity-30 ml-6 tracking-[0.4em]">CHARACTER COUNT PER SEGMENT</p>
             </div>
-          </div>
 
-          <div className="flex justify-end pt-20 border-t border-on-surface/5">
-            <button type="submit" className="btn-primary min-w-[360px] shadow-[0_0_60px_rgba(235,0,0,0.3)] hover:shadow-[0_0_100px_rgba(235,0,0,0.5)] h-16">
-              SYNC SYSTEM ARCHITECTURE
-            </button>
-          </div>
-        </form>
+            <div className="pt-lg border-t border-outline-variant/20 flex justify-end">
+              <button
+                type="submit"
+                disabled={saving}
+                className="bg-primary text-on-primary py-md px-xl rounded-full font-semibold hover:bg-primary/90 transition-all shadow-lg shadow-primary/10 active:scale-95 disabled:opacity-50 disabled:scale-100"
+              >
+                {saving ? "Synchronizing..." : "Sync System Architecture"}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
-    </motion.div>
+    </main>
   );
 }

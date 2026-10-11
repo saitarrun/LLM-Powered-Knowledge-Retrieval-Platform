@@ -19,6 +19,16 @@ from app.db.models import AgentTrace, QueryLog
 router = APIRouter(tags=["chat"])
 
 
+def _llm_provider_status_code(exc: Exception) -> int | None:
+    """Extract an upstream LLM-provider HTTP status from openai/httpx-style errors."""
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return status
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    return status if isinstance(status, int) else None
+
+
 class RetrievalFilters(BaseModel):
     document_ids: list[str] | None = None
     filename_contains: str | None = None
@@ -130,6 +140,19 @@ async def chat(
     except HTTPException:
         raise
     except Exception as e:
+        provider_status = _llm_provider_status_code(e)
+        if provider_status in (401, 402, 403, 429):
+            # The LLM provider (e.g. OpenRouter) rejected the request — billing,
+            # quota, or auth — not an app bug. Surface a 503 with an actionable
+            # message instead of an opaque 500.
+            logger.error(f"LLM provider error (provider returned {provider_status}): {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"LLM provider unavailable (provider returned {provider_status}). "
+                    "Check provider billing/quota and API key."
+                ),
+            ) from e
         logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
 

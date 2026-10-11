@@ -235,6 +235,18 @@ def get_docker_logs():
 
 # ── GitHub helpers ─────────────────────────────────────────────────────────────
 
+def _looks_like_provider_billing(results, analysis_text):
+    """Detect LLM-provider billing/quota failures (e.g. OpenRouter 402 Payment Required).
+
+    These are infrastructure/billing issues, not code regressions — reverting the
+    merge cannot fix them, so the auto-filed issue must say so.
+    """
+    haystack = " ".join(
+        r.get("detail", "") + " " + r.get("response", "") for r in results
+    ) + " " + (analysis_text or "")
+    return "402" in haystack or "Payment Required" in haystack
+
+
 def post_commit_comment(sha, body):
     httpx.post(
         f"{GH_API}/repos/{REPO}/commits/{sha}/comments",
@@ -366,16 +378,34 @@ if __name__ == "__main__":
 
     # If critical failures — open an issue and optionally revert
     if critical_failures:
-        issue_title = f"🚨 Post-deploy failure on {COMMIT_SHA[:8]}: {', '.join(r['name'] for r in critical_failures)}"
-        issue_body  = (
-            f"**Automatic issue opened by Claude** after detecting critical failures "
-            f"following merge of `{COMMIT_SHA[:10]}`.\n\n"
-            f"**Commit message:** {COMMIT_MESSAGE}\n\n"
-            f"---\n\n{analysis}\n\n"
-            f"**To revert:**\n```bash\ngit revert {COMMIT_SHA}\ngit push\n```"
-        )
+        failed_names = ", ".join(r["name"] for r in critical_failures)
+        if _looks_like_provider_billing(results, analysis):
+            # LLM provider billing/quota failure (e.g. OpenRouter 402) — reverting
+            # the merge cannot fix this; point at the real remedy instead.
+            issue_title = f"🏦 LLM provider billing failure on {COMMIT_SHA[:8]}: {failed_names}"
+            issue_body = (
+                f"**Automatic issue opened by Claude** after detecting critical failures "
+                f"following merge of `{COMMIT_SHA[:10]}`.\n\n"
+                f"**Commit message:** {COMMIT_MESSAGE}\n\n"
+                f"---\n\n{analysis}\n\n"
+                f"**Do NOT revert** — the failures point to the LLM provider returning "
+                f"`402 Payment Required` (OpenRouter account out of credits / billing issue), "
+                f"not to a code regression. Reverting the merge cannot fix this.\n\n"
+                f"**To fix:** top up credits / check billing at https://openrouter.ai/ "
+                f"and verify the `OPENROUTER_API_KEY` secret is valid."
+            )
+            issue_labels = ["bug", "provider"]
+        else:
+            issue_title = f"🚨 Post-deploy failure on {COMMIT_SHA[:8]}: {failed_names}"
+            issue_body = (
+                f"**Automatic issue opened by Claude** after detecting critical failures "
+                f"following merge of `{COMMIT_SHA[:10]}`.\n\n"
+                f"---\n\n{analysis}\n\n"
+                f"**To revert:**\n```bash\ngit revert {COMMIT_SHA}\ngit push\n```"
+            )
+            issue_labels = ["bug", "critical"]
         try:
-            create_issue(issue_title, issue_body, ["bug", "critical"])
+            create_issue(issue_title, issue_body, issue_labels)
             print(f"🚨 Opened critical issue: {issue_title}")
         except Exception as e:
             print(f"⚠️  Could not open issue: {e}")
